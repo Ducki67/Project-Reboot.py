@@ -17,7 +17,9 @@ xcopy "assets" "ReleaseBuild\assets" /E /I /H /Y
 xcopy "dlls" "ReleaseBuild\dlls" /E /I /H /Y
 echo.
 echo Zipping release package...
-powershell -command "Compress-Archive -Path 'ReleaseBuild\*' -DestinationPath '%ZIP_NAME%' -Force"
+echo Using Python to safely archive files...
+if exist "%ZIP_NAME%" del /q "%ZIP_NAME%"
+python -c "import shutil; shutil.make_archive('RebootLauncher_Release', 'zip', 'ReleaseBuild')"
 echo.
 echo Cleaning up temporary files...
 rmdir /s /q "ReleaseBuild"

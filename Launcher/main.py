@@ -1,5 +1,5 @@
 import customtkinter as ctk
-import os, json, time, threading, psutil, subprocess
+import sys, os, json, time, threading, psutil, subprocess
 from ctypes import *
 from ctypes import wintypes
 from tkinter import filedialog, messagebox
@@ -145,11 +145,11 @@ class RebootLauncherApp(ctk.CTk):
         
         # When compiled, look for assets next to the .exe. When running from Python, look next to main.py
         if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
+            self.base_dir = os.path.dirname(sys.executable)
         else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
             
-        icon_path = os.path.join(base_dir, "assets", "icons", "reboot.ico")
+        icon_path = os.path.join(self.base_dir, "assets", "icons", "reboot.ico")
         if os.path.exists(icon_path):
             self.iconbitmap(icon_path)
             
@@ -308,11 +308,17 @@ class RebootLauncherApp(ctk.CTk):
         self.profile_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.profile_frame.pack(pady=(20,10), padx=20, fill="x")
 
-        # Avatar circle placeholder
-        avatar_canvas = ctk.CTkCanvas(self.profile_frame, width=45, height=45, bg="#121212", highlightthickness=0)
-        avatar_canvas.pack(side="left", padx=(0, 10))
-        avatar_canvas.create_oval(2, 2, 43, 43, fill="#333333", outline="")
-        avatar_canvas.create_text(22, 22, text="S", fill="white", font=("Segoe UI", 16, "bold"))
+        # Avatar (user.png if available, else placeholder)
+        user_img_path = os.path.join(self.base_dir, "assets", "images", "user.png")
+        if HAS_PIL and os.path.exists(user_img_path):
+            user_image = ctk.CTkImage(light_image=Image.open(user_img_path), size=(45, 45))
+            avatar_lbl = ctk.CTkLabel(self.profile_frame, text="", image=user_image)
+            avatar_lbl.pack(side="left", padx=(0, 10))
+        else:
+            avatar_canvas = ctk.CTkCanvas(self.profile_frame, width=45, height=45, bg="#121212", highlightthickness=0)
+            avatar_canvas.pack(side="left", padx=(0, 10))
+            avatar_canvas.create_oval(2, 2, 43, 43, fill="#333333", outline="")
+            avatar_canvas.create_text(22, 22, text="S", fill="white", font=("Segoe UI", 16, "bold"))
 
         info_frame = ctk.CTkFrame(self.profile_frame, fg_color="transparent")
         info_frame.pack(side="left", fill="both", expand=True)
@@ -332,9 +338,17 @@ class RebootLauncherApp(ctk.CTk):
         self.nav_btns = {}
         nav_items = ["Play", "Host", "Backend", "Info", "Settings"]
         for item in nav_items:
-            btn = ctk.CTkButton(self.sidebar, text=f"   {item}", anchor="w", fg_color="transparent", 
-                                hover_color="#1e1e1e", font=("Segoe UI", 14), corner_radius=6, height=38,
-                                command=lambda n=item: self.show_page(n))
+            img_path = os.path.join(self.base_dir, "assets", "images", f"{item.lower()}.png")
+            if HAS_PIL and os.path.exists(img_path):
+                btn_img = ctk.CTkImage(light_image=Image.open(img_path), size=(20, 20))
+                btn = ctk.CTkButton(self.sidebar, text=f"  {item}", image=btn_img, anchor="w", fg_color="transparent", 
+                                    hover_color="#1e1e1e", font=("Segoe UI", 14), corner_radius=6, height=38,
+                                    command=lambda n=item: self.show_page(n))
+            else:
+                btn = ctk.CTkButton(self.sidebar, text=f"   {item}", anchor="w", fg_color="transparent", 
+                                    hover_color="#1e1e1e", font=("Segoe UI", 14), corner_radius=6, height=38,
+                                    command=lambda n=item: self.show_page(n))
+            
             btn.pack(fill="x", padx=15, pady=2)
             self.nav_btns[item] = btn
 
