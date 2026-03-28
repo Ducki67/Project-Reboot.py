@@ -141,7 +141,7 @@ class RebootLauncherApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.withdraw()  # Hide the window while initializing to prevent "piece-by-piece" loading
-        self.title("Reboot Launcher")
+        self.title("Reboot.py")
         
         # When compiled, look for assets next to the .exe. When running from Python, look next to main.py
         if getattr(sys, 'frozen', False):
