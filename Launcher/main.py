@@ -142,6 +142,17 @@ class RebootLauncherApp(ctk.CTk):
         super().__init__()
         self.withdraw()  # Hide the window while initializing to prevent "piece-by-piece" loading
         self.title("Reboot Launcher")
+        
+        # When compiled, look for assets next to the .exe. When running from Python, look next to main.py
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+        icon_path = os.path.join(base_dir, "assets", "icons", "reboot.ico")
+        if os.path.exists(icon_path):
+            self.iconbitmap(icon_path)
+            
         self.geometry("950x650")
         self.minsize(850, 550)
         ctk.set_appearance_mode("dark")

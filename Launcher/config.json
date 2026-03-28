@@ -5,7 +5,7 @@
     "host_username": "PythonServer",
     "host_email": "server@projectreboot.py",
     "host_account_password": "HostPassword",
-    "path": "D:\\FortniteBuilds\\Ch3\\19.01\\19.01\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe",
+    "path": "D:\\FortniteBuilds\\Ch1\\Fortnite v3.6\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe",
     "dll_console": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/ErbiumClient.dll",
     "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/Tellurium 3551.dll",
     "dll_memory": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/memory.dll",
