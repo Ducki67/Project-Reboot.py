@@ -3,5 +3,12 @@ title Launcher
 cd /d "%~dp0"
 python -m pip install customtkinter psutil pillow
 echo [INFO] Rendszergazdakent futtasd a .bat-ot!
+::python main.py
+::python mainTest1.py
+::python main wllworking.py :: our back up
+
+:: new
+
 python main.py
+
 pause

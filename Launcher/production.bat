@@ -1,0 +1,1 @@
+REM this would be like after compile it zips the launcher exe assets folder and dlls dll folder with it in 1 to guve it out
