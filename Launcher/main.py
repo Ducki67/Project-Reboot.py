@@ -336,7 +336,7 @@ class RebootLauncherApp(ctk.CTk):
 
         # Nav Buttons list exactly from screenshot
         self.nav_btns = {}
-        nav_items = ["Play", "Host", "Backend", "Info", "Settings"]
+        nav_items = ["Play", "Download", "Host", "Backend", "Info", "Settings"]
         for item in nav_items:
             img_path = os.path.join(self.base_dir, "assets", "images", f"{item.lower()}.png")
             if HAS_PIL and os.path.exists(img_path):
@@ -360,7 +360,7 @@ class RebootLauncherApp(ctk.CTk):
 
         self.pages = {}
         # We loop and create the main pages
-        for name in ["Play", "ClientOptions", "Host", "HostInformation", "HostOptions", "HostShare", "Backend", "Info", "Settings", "AccountSettings", "InternalFiles"]:
+        for name in ["Play", "Download", "ClientOptions", "Host", "HostInformation", "HostOptions", "HostShare", "Backend", "Info", "Settings", "AccountSettings", "InternalFiles"]:
             f = ctk.CTkScrollableFrame(self.pages_frame, fg_color="transparent")
             self.pages[name] = f
             getattr(self, f"build_{name.lower()}_page")(f)
@@ -404,6 +404,135 @@ class RebootLauncherApp(ctk.CTk):
         
         launch_btn = ctk.CTkButton(parent, text="Play", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=self.handle_launch)
         launch_btn.pack(pady=40, fill="x")
+
+    def build_download_page(self, parent):
+        ctk.CTkLabel(parent, text="Download Builds", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 5))
+        ctk.CTkLabel(parent, text="Note: Links only work up to v10.31! Newer versions will not download.", text_color="#ef4444", anchor="w").pack(fill="x", pady=(0, 5))
+        
+        controls_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        controls_frame.pack(fill="x", pady=(0, 20))
+        
+        ctk.CTkLabel(controls_frame, text="Sort By:", text_color="#a1a1aa", font=("Segoe UI", 14)).pack(side="left", padx=(0, 10))
+        sort_var = ctk.StringVar(value="Oldest to Latest (Low - High)")
+        
+        view_var = ctk.StringVar(value="List View")
+        
+        self.downloads_container = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.downloads_container.pack(fill="both", expand=True)
+
+        loading_lbl = ctk.CTkLabel(self.downloads_container, text="Loading versions...", text_color="#a1a1aa")
+        loading_lbl.pack(pady=20)
+        
+        data_result = {}
+        error_result = []
+        
+        def fetch_versions():
+            try:
+                import urllib.request
+                req = urllib.request.Request('https://builds.rebootfn.org/versions.json', headers={'User-Agent': 'Mozilla/5.0'})
+                data = json.loads(urllib.request.urlopen(req).read())
+                data_result['data'] = data
+            except Exception as e:
+                error_result.append(str(e))
+                
+        def get_version_tuple(url):
+            import urllib.parse
+            filename = url.split('/')[-1]
+            filename = urllib.parse.unquote(filename)
+            version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ', '').replace('vFortnite', '').replace('Fortnite ', '').replace('Fortnite', '').strip()
+            return tuple(int(x) for x in version_str.split('.') if x.isdigit())
+
+        def render_versions(*args):
+            # Show a busy cursor or hide the container temporarily
+            self.downloads_container.pack_forget()
+            
+            # Clear container first
+            for widget in self.downloads_container.winfo_children():
+                widget.destroy()
+                
+            versions = data_result.get('data', [])
+            if not versions:
+                self.downloads_container.pack(fill="both", expand=True)
+                return
+                
+            sort_order = sort_var.get()
+            view_mode = view_var.get()
+            
+            # Sort the versions based on the option menu
+            is_descending = ("High - Low" in sort_order)
+            sorted_versions = sorted(versions, key=get_version_tuple, reverse=is_descending)
+            
+            # If Blocks view, configure columns
+            columns = 3
+            if view_mode == "Blocks View":
+                for i in range(columns):
+                    self.downloads_container.grid_columnconfigure(i, weight=1)
+            else:
+                self.downloads_container.grid_columnconfigure((0, 1, 2), weight=0)
+
+            for idx, url in enumerate(sorted_versions):
+                import urllib.parse
+                filename = url.split('/')[-1]
+                filename = urllib.parse.unquote(filename)
+                version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ', '').replace('vFortnite', '').replace('Fortnite ', '').replace('Fortnite', '').strip()
+                
+                parts = get_version_tuple(url)
+                is_valid = True
+                if parts:
+                    if parts[0] > 10 or (parts[0] == 10 and len(parts) > 1 and parts[1] > 31):
+                        is_valid = False
+
+                tile_frame = ctk.CTkFrame(self.downloads_container, fg_color="#1E1E1E", corner_radius=8)
+                
+                import webbrowser
+                def make_cmd(u=url): return lambda: webbrowser.open(u)
+                
+                if view_mode == "List View":
+                    tile_frame.pack(fill="x", pady=4, padx=5)
+                    
+                    lbl = ctk.CTkLabel(tile_frame, text=f"Version {version_str}", font=("Segoe UI", 15, "bold"), text_color="white" if is_valid else "#52525b")
+                    lbl.pack(side="left", padx=15, pady=15)
+                    
+                    if is_valid:
+                        btn = ctk.CTkButton(tile_frame, text="Download", width=100, fg_color="#2563eb", hover_color="#1d4ed8", command=make_cmd())
+                        btn.pack(side="right", padx=15)
+                    else:
+                        btn = ctk.CTkButton(tile_frame, text="Unsupported", width=100, fg_color="#3f3f46", hover_color="#3f3f46", state="disabled")
+                        btn.pack(side="right", padx=15)
+                else:
+                    # Blocks View
+                    r = idx // columns
+                    c = idx % columns
+                    tile_frame.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
+                    
+                    lbl = ctk.CTkLabel(tile_frame, text=f"v{version_str}", font=("Segoe UI", 18, "bold"), text_color="white" if is_valid else "#52525b")
+                    lbl.pack(pady=(15, 5))
+                    
+                    if is_valid:
+                        btn = ctk.CTkButton(tile_frame, text="Download", width=100, fg_color="#2563eb", hover_color="#1d4ed8", command=make_cmd())
+                        btn.pack(pady=(5, 15))
+                    else:
+                        btn = ctk.CTkButton(tile_frame, text="Unsupported", width=100, fg_color="#3f3f46", hover_color="#3f3f46", state="disabled")
+                        btn.pack(pady=(5, 15))
+
+            self.downloads_container.pack(fill="both", expand=True)
+
+        def check_data():
+            if 'data' in data_result:
+                render_versions()
+            elif error_result:
+                loading_lbl.configure(text=f"Failed to load versions: {error_result[0]}")
+            else:
+                self.after(100, check_data)
+
+        sort_menu = ctk.CTkOptionMenu(controls_frame, variable=sort_var, values=["Latest to Oldest (High - Low)", "Oldest to Latest (Low - High)"], command=render_versions, fg_color="#1e1e1e", button_color="#252526", button_hover_color="#2d2d30")
+        sort_menu.pack(side="left")
+        
+        view_toggle = ctk.CTkSegmentedButton(controls_frame, values=["List View", "Blocks View"], variable=view_var, command=render_versions, selected_color="#2563eb", unselected_color="#1e1e1e")
+        view_toggle.pack(side="right", padx=(10, 0))
+
+        threading.Thread(target=fetch_versions, daemon=True).start()
+        self.after(100, check_data)
 
     def build_clientoptions_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -474,8 +603,30 @@ class RebootLauncherApp(ctk.CTk):
 
     def build_info_page(self, parent):
         ctk.CTkLabel(parent, text="Info", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
-        SettingTile(parent, "Project Reboot Python Clone", "A 1:1 recreation of the Reboot Launcher UI.")
-        SettingTile(parent, "Version", "Alpha")
+        
+        info_frame = ctk.CTkFrame(parent, fg_color="#1E1E1E", corner_radius=10)
+        info_frame.pack(fill="x", pady=5)
+        
+        # Banner/Header area inside the info frame
+        ctk.CTkLabel(info_frame, text="Reboot.py", font=("Segoe UI", 24, "bold"), text_color="#3b82f6").pack(pady=(20, 5))
+        ctk.CTkLabel(info_frame, text="The most lightweight way to play legacy Fortnite.", font=("Segoe UI", 12), text_color="#a1a1aa").pack(pady=(0, 20))
+        
+        import webbrowser
+        def open_discord(): webbrowser.open("https://discord.gg/rebootmp")
+        def open_github(): webbrowser.open("https://github.com/Project-Reboot")
+        
+        btn_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        btn_frame.pack(pady=(0, 20))
+        
+        ctk.CTkButton(btn_frame, text="Discord", fg_color="#5865F2", hover_color="#4752C4", width=120, command=open_discord).pack(side="left", padx=10)
+        ctk.CTkButton(btn_frame, text="GitHub", fg_color="#333333", hover_color="#222222", width=120, command=open_github).pack(side="left", padx=10)
+
+        # Tiles matching Reboot aesthetic
+        SettingTile(parent, "Project Reboot Python Clone", "A completely native 1:1 recreation of the original Reboot Launcher.", button_text="Read")
+        SettingTile(parent, "Version", "Release - v1.0", button_text="Check for updates")
+        SettingTile(parent, "Special Thanks", "To the amazing community of developers enabling legacy gameplay.", button_text="Contributors")
+        
+        ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games.\npowered by CustomTkinter.", text_color="#52525b", font=("Segoe UI", 11)).pack(side="bottom", pady=40)
 
     def build_settings_page(self, parent):
         ctk.CTkLabel(parent, text="Settings", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
