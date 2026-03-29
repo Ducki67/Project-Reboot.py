@@ -72,26 +72,50 @@ class DiscordManager:
         self.rpc = None
         self.start_time = int(time.time())
         self.is_connected = False
-        if HAS_RPC:
+
+    def connect(self):
+        if HAS_RPC and not self.is_connected:
             try:
                 self.rpc = Presence(self.client_id)
                 self.rpc.connect()
                 self.is_connected = True
-                self.update_state("In Launcher", "Starting up...")
             except Exception:
-                pass
+                self.is_connected = False
 
-    def update_state(self, state, details):
-        if self.rpc and self.is_connected:
-            try:
-                self.rpc.update(state=state, details=details, start=self.start_time, large_image="rebootLogo", large_text="Project Reboot")
-            except: pass
-
-    def clear_state(self):
+    def disconnect(self):
         if self.rpc and self.is_connected:
             try:
                 self.rpc.clear()
-            except: pass
+                self.rpc.close()
+            except Exception: pass
+            self.is_connected = False
+            self.rpc = None
+
+    def update_state(self, state, details, large_image="rebootlogo", small_image=None, small_text=None, large_text="Project Reboot"):
+        if hasattr(self, 'is_connected') and self.is_connected and self.rpc:
+            try:
+                btns = [
+                    {"label": "Reboot Discord", "url": "https://discord.gg/rebootmp"},
+                    {"label": "Launcher src code", "url": "https://github.com/Ducki67/Project-Reboot.py"}
+                ]
+                kwargs = {
+                    "state": state,
+                    "details": details,
+                    "start": self.start_time,
+                    "large_image": large_image,
+                    "large_text": large_text,
+                    "buttons": btns
+                }
+                if small_image: kwargs["small_image"] = small_image
+                if small_text: kwargs["small_text"] = small_text
+                self.rpc.update(**kwargs)
+            except Exception as e: print('RPC Error:', e)
+
+    def clear_state(self):
+        if hasattr(self, 'is_connected') and self.is_connected and self.rpc:
+            try:
+                self.rpc.clear()
+            except Exception as e: print('RPC Error:', e)
 
 # --- UI TILE COMPONENT ---
 # Matches Fluent UI "SettingTile" look exactly
@@ -189,6 +213,7 @@ class RebootLauncherApp(ctk.CTk):
         self.backend_type_var.trace_add("write", self.update_backend_action_text)
 
         self.backend_url_var = ctk.StringVar(value=self.settings.get("backend_url", "http://127.0.0.1:3551"))
+        self.backend_port_var = ctk.StringVar(value=self.settings.get("backend_port", "3551"))
         self.backend_path_var = ctk.StringVar(value=self.settings.get("backend_path", "assets/backend/lawinserver.exe"))
         self.backend_autostart_var = ctk.BooleanVar(value=self.settings.get("backend_autostart", False))
         self.rpc_enabled_var = ctk.BooleanVar(value=self.settings.get("rpc_enabled", True))
@@ -220,13 +245,13 @@ class RebootLauncherApp(ctk.CTk):
 
     def update_discord_rpc_state(self, *args):
         if hasattr(self, 'rpc_enabled_var'):
+            if getattr(self, 'game_running', False):
+                return
             if self.rpc_enabled_var.get():
-                self.discord.update_state("In Launcher", "Browsing menus")
+                self.discord.connect()
+                self.discord.update_state("In Launcher", "Browsing menus")      
             else:
-                self.discord.clear_state()
-            # Try saving config if it's completely initialized
-            if hasattr(self, 'path_var') and args:
-                self.save_config()
+                self.discord.disconnect()
 
     def update_backend_action_text(self, *args):
         if hasattr(self, 'backend_type_var') and hasattr(self, 'backend_action_text'):
@@ -240,6 +265,7 @@ class RebootLauncherApp(ctk.CTk):
             if hasattr(self, 'remote_url_tile') and hasattr(self, 'backend_path_tile') and hasattr(self, 'start_backend_tile'):
                 # First unpack everything
                 self.remote_url_tile.pack_forget()
+                self.local_port_tile.pack_forget()
                 self.backend_path_tile.pack_forget()
                 self.start_backend_tile.pack_forget()
                 self.autostart_backend_tile.pack_forget()
@@ -247,6 +273,8 @@ class RebootLauncherApp(ctk.CTk):
                 # Then pack in correct order based on type
                 if btype == "Remote":
                     self.remote_url_tile.pack(fill="x", pady=6)
+                elif btype == "Local":
+                    self.local_port_tile.pack(fill="x", pady=6)
                 elif btype == "Embedded":
                     self.backend_path_tile.pack(fill="x", pady=6)
                     
@@ -262,7 +290,7 @@ class RebootLauncherApp(ctk.CTk):
             try:
                 with open(CONFIG_PATH, "r") as f:
                     self.settings.update(json.load(f))
-            except: pass
+            except Exception as e: print('RPC Error:', e)
 
     def save_config(self):
         self.settings["path"] = self.path_var.get()
@@ -287,6 +315,7 @@ class RebootLauncherApp(ctk.CTk):
         self.settings["launch_args"] = self.launch_args_var.get()
         self.settings["backend_type"] = self.backend_type_var.get()
         self.settings["backend_url"] = self.backend_url_var.get()
+        self.settings["backend_port"] = self.backend_port_var.get()
         self.settings["backend_path"] = self.backend_path_var.get()
         self.settings["backend_autostart"] = self.backend_autostart_var.get()   
         self.settings["rpc_enabled"] = self.rpc_enabled_var.get()
@@ -297,7 +326,7 @@ class RebootLauncherApp(ctk.CTk):
         try:
             with open(CONFIG_PATH, "w") as f:
                 json.dump(self.settings, f, indent=4)
-        except: pass
+        except Exception as e: print('RPC Error:', e)
 
     def setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=240, corner_radius=0, fg_color="#121212")
@@ -391,7 +420,7 @@ class RebootLauncherApp(ctk.CTk):
         if hasattr(self, 'discord') and self.discord:
             if hasattr(self, 'rpc_enabled_var') and not self.rpc_enabled_var.get():
                 self.discord.clear_state()
-            else:
+            elif not getattr(self, 'game_running', False):
                 user = self.username_var.get() if hasattr(self, 'username_var') else "PythonPlayer"
                 self.discord.update_state(f"Viewing {active_nav} tab", f"Logged in as {user}")
 
@@ -402,13 +431,13 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Installation directory", "Opens the installation directory", button_text="Browse", show_entry=True, entry_var=self.path_var, button_command=self.browse_game_dir)
         SettingTile(parent, "Client Options", "Override engine arguments", button_text=">", is_subpage=True, button_command=lambda: self.show_page("ClientOptions"))
         
-        launch_btn = ctk.CTkButton(parent, text="Play", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=self.handle_launch)
-        launch_btn.pack(pady=40, fill="x")
+        self.launch_btn = ctk.CTkButton(parent, text="Play", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=self.handle_launch)
+        self.launch_btn.pack(pady=40, fill="x")
 
     def build_download_page(self, parent):
         ctk.CTkLabel(parent, text="Download Builds", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 5))
         ctk.CTkLabel(parent, text="Note: Links only work up to v10.31! Newer versions will not download.", text_color="#ef4444", anchor="w").pack(fill="x", pady=(0, 5))
-        
+
         controls_frame = ctk.CTkFrame(parent, fg_color="transparent")
         controls_frame.pack(fill="x", pady=(0, 20))
         
@@ -552,8 +581,8 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Share Link", "Share your server with other people online", button_text=">", is_subpage=True, button_command=lambda: self.show_page("HostShare"))
         SettingTile(parent, "Reset to defaults", "Restore the default settings for the game server", button_text="Reset")
 
-        host_btn = ctk.CTkButton(parent, text="Host Server", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=lambda: self.handle_launch(is_host=True))
-        host_btn.pack(pady=40, fill="x")
+        self.host_btn = ctk.CTkButton(parent, text="Host Server", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=lambda: self.handle_launch(is_host=True))
+        self.host_btn.pack(pady=40, fill="x")
 
     def build_hostinformation_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -594,6 +623,7 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Backend Type", "Choose how the backend is managed", is_option=True, option_var=self.backend_type_var, options_list=["Local", "Remote", "Embedded"])
         
         self.remote_url_tile = SettingTile(parent, "Remote URL", "Address for the remote backend", show_entry=True, entry_var=self.backend_url_var)
+        self.local_port_tile = SettingTile(parent, "Local Port", "Port of the local backend", show_entry=True, entry_var=self.backend_port_var)
         self.backend_path_tile = SettingTile(parent, "Backend executable path", "Executable path to local backend", button_text="Browse", show_entry=True, entry_var=self.backend_path_var, button_command=lambda: self.browse_backend())
         
         self.start_backend_tile = SettingTile(parent, "Start backend", "Run the backend manually or check remote", button_text_var=self.backend_action_text, button_command=self.start_backend)
@@ -715,7 +745,8 @@ class RebootLauncherApp(ctk.CTk):
                 if not url.startswith("http"):
                     url = "http://" + url
             else:
-                url = "http://127.0.0.1:3551"
+                port = self.backend_port_var.get().strip()
+                url = f"http://127.0.0.1:{port}"
             
             def ping_thread():
                 try:
@@ -778,7 +809,55 @@ class RebootLauncherApp(ctk.CTk):
             return success
         except: return False
 
+    def get_game_version(self, exe_path):
+        build, cl = "Unknown", "Unknown"
+        try:
+            import win32api
+            lang, codepage = win32api.GetFileVersionInfo(exe_path, '\\VarFileInfo\\Translation')[0]
+            strInfo = u'\\StringFileInfo\\%04X%04X\\%s' % (lang, codepage, "ProductVersion")
+            prod = win32api.GetFileVersionInfo(exe_path, strInfo)
+            cl = prod.split('-')[1].split('+')[0]
+            build = prod.split('Release-')[1]
+            return build, cl
+        except Exception: pass
+        try:
+            import re
+            with open(exe_path, 'rb') as f:
+                data = f.read(1000000) # Read only first MBs as fallback
+                data_no_nulls = data.replace(b'\x00', b'')
+                match = re.search(rb'\d+\.\d+\.\d+-(\d+)\+\+\+Fortnite\+Release-([a-zA-Z0-9\.]+)', data_no_nulls)
+                if match: return match.group(2).decode('utf-8'), match.group(1).decode('utf-8')
+        except Exception: pass
+        return build, cl
+
+    def patch_headless(self, exe_path):
+        import mmap
+        orig_bytes = bytes([45, 0, 105, 0, 110, 0, 118, 0, 105, 0, 116, 0, 101, 0, 115, 0, 101, 0, 115, 0, 115, 0, 105, 0, 111, 0, 110, 0, 32, 0, 45, 0, 105, 0, 110, 0, 118, 0, 105, 0, 116, 0, 101, 0, 102, 0, 114, 0, 111, 0, 109, 0, 32, 0, 45, 0, 112, 0, 97, 0, 114, 0, 116, 0, 121, 0, 95, 0, 106, 0, 111, 0, 105, 0, 110, 0, 105, 0, 110, 0, 102, 0, 111, 0, 95, 0, 116, 0, 111, 0, 107, 0, 101, 0, 110, 0, 32, 0, 45, 0, 114, 0, 101, 0, 112, 0, 108, 0, 97, 0, 121, 0])
+        patched_bytes = bytes([45, 0, 108, 0, 111, 0, 103, 0, 32, 0, 45, 0, 110, 0, 111, 0, 115, 0, 112, 0, 108, 0, 97, 0, 115, 0, 104, 0, 32, 0, 45, 0, 110, 0, 111, 0, 115, 0, 111, 0, 117, 0, 110, 0, 100, 0, 32, 0, 45, 0, 110, 0, 117, 0, 108, 0, 108, 0, 114, 0, 104, 0, 105, 0, 32, 0, 45, 0, 117, 0, 115, 0, 101, 0, 111, 0, 108, 0, 100, 0, 105, 0, 116, 0, 101, 0, 109, 0, 99, 0, 97, 0, 114, 0, 100, 0, 115, 0, 32, 0, 32, 0, 32, 0, 32, 0, 32, 0, 32, 0, 32, 0])
+        try:
+            with open(exe_path, 'r+b') as f:
+                mm = mmap.mmap(f.fileno(), 0)
+                pos = mm.find(orig_bytes)
+                if pos != -1:
+                    print(f"[*] Applying game executable headless byte-patch to {exe_path}...")
+                    mm.seek(pos)
+                    mm.write(patched_bytes)
+                    mm.flush()
+                mm.close()
+        except Exception as e:
+            print(f"[-] Could not patch headless mode binary: {e}")
+
     def handle_launch(self, is_host=False):
+        # Stop process if already running
+        if is_host:
+            if hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None:
+                self.host_process.kill()
+                return
+        else:
+            if hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None:
+                self.game_process.kill()
+                return
+
         self.save_config()
         exe_path = self.path_var.get()
         if not os.path.exists(exe_path):
@@ -787,7 +866,20 @@ class RebootLauncherApp(ctk.CTk):
 
         bin_dir = os.path.dirname(exe_path)
         exe_name = os.path.basename(exe_path)
+
+        # Remove Aftermath crash DLL if it exists
+        aftermath_dll = os.path.join(bin_dir, "GFSDK_Aftermath_Lib.x64.dll")
+        if os.path.exists(aftermath_dll):
+            try:
+                os.remove(aftermath_dll)
+                print(f"[+] Deleted {aftermath_dll} to prevent game server crashes.")
+            except Exception as e:
+                print(f"[-] Could not delete {aftermath_dll}: {e}")
+
         if is_host:
+            if self.host_headless_var.get():
+                self.patch_headless(exe_path)
+            
             em = self.settings.get("host_email", "hostvprojectreboot.py")
             pw = self.settings.get("host_account_password", "12345678")
             un = self.settings.get("host_username", "Host")
@@ -826,19 +918,56 @@ class RebootLauncherApp(ctk.CTk):
 
         # Use shell=False and stdout=subprocess.PIPE to read log reliably
         proc = subprocess.Popen(
-            launch_cmd, 
-            cwd=bin_dir, 
+            launch_cmd,
+            cwd=bin_dir,
             shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1
+            bufsize=1,
+            encoding='utf-8',
+            errors='replace'
         )
+
+        if is_host:
+            self.host_process = proc
+            if hasattr(self, 'host_btn'):
+                self.host_btn.configure(text="Stop Server", fg_color="#ef4444", hover_color="#dc2626")
+        else:
+            self.game_process = proc
+            if hasattr(self, 'launch_btn'):
+                self.launch_btn.configure(text="Stop Client", fg_color="#ef4444", hover_color="#dc2626")
+
+        # Determine the precise discord running state
+        is_headless = self.host_headless_var.get() if hasattr(self, 'host_headless_var') else False
         
-        state_msg = "Hosting Server" if is_host else "Playing Fortnite"
+        if is_host and is_headless:
+            state_msg = "Running GameServer host"
+        elif is_host and not is_headless:
+            state_msg = "Running: Client and GameServer"
+        else:
+            state_msg = "Running Client"
+            
+        self.game_running = True
+
         if hasattr(self, 'rpc_enabled_var') and self.rpc_enabled_var.get():
             display_name = self.host_username_var.get() if is_host else self.username_var.get()
-            self.discord.update_state(state_msg, f"Logged in as {display_name}")
+            
+            # Fetch Build and CL
+            build_ver, cl_ver = self.get_game_version(exe_path)
+            large_text = "Project Reboot"
+            if build_ver != "Unknown":
+                large_text = f"Build: {build_ver} | CL: {cl_ver}"
+                
+            self.discord.update_state(
+                state=state_msg,
+                details=f"Logged in as {display_name}",
+                large_image="fortnitelogo",
+                small_image="rebootlogo",
+                small_text="Reboot.py",
+                large_text=large_text
+            )
+            
         threading.Thread(target=self.monitor_process, args=(proc, is_host,), daemon=True).start()
 
     def monitor_process(self, proc, is_host):
@@ -855,50 +984,73 @@ class RebootLauncherApp(ctk.CTk):
         # 2. LOG WATCHER: Wait for login success before injecting late DLLs (MemoryLeak, Console, Server)
         logged_in = False
         
-        for line in iter(proc.stdout.readline, ''):
-            if not line:
-                 break
-                 
-            # Print to python console so user can see it
-            print("[UE4] " + line.strip())
-            
-            # In Dart, they checked if the line specifically contained ANY of the keywords to know if it logged in
-            if not logged_in and ("[UOnlineAccountCommon::ContinueLoggingIn]" in line or "(Completed)" in line):
-                logged_in = True
-                print("\n[+] Fortnite login completed! Initiating late DLL injections...")
+        try:
+            for line in iter(proc.stdout.readline, ''):
+                if not line:
+                    break
                 
-                # Late Inject: Memory Leak patch (Usually for Chapter 1)
-                dll_memory = self.dll_memory_var.get()
-                if dll_memory and os.path.exists(dll_memory):
-                    if self.python_injector(target_pid, dll_memory):
-                        print(f"[+] Late Injection: {os.path.basename(dll_memory)} injected successfully.")
+                print("[UE4] " + line.strip())
+
+                # In Dart, they checked if the line specifically contained ALL keywords to know if it logged in
+                if not logged_in and ("[UOnlineAccountCommon::ContinueLoggingIn]" in line and "(Completed)" in line):
+                    logged_in = True
+                    print("\n[+] Fortnite login completed! Initiating late DLL injections...")
+
+                    # Late Inject: Memory Leak patch (Usually for Chapter 1)        
+                    dll_memory = self.dll_memory_var.get()
+                    if dll_memory and os.path.exists(dll_memory):
+                        if self.python_injector(target_pid, dll_memory):
+                            print(f"[+] Late Injection: {os.path.basename(dll_memory)} injected successfully.")
+                        else:
+                            print(f"[-] Late Injection failed for {os.path.basename(dll_memory)}.")
+
+                    # Late Inject: Console (Play) or Server (Host)
+                    if is_host:
+                        try:
+                            import subprocess
+                            subprocess.run(f"FOR /F \"tokens=5\" %T IN ('netstat -a -n -o ^| findstr :7777') DO TaskKill.exe /PID %T /F", shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                            print("[+] Ensured port 7777 is clear prior to hosting.")
+                        except:
+                            pass
+
+                        dll_server = self.dll_server_var.get()
+                        if dll_server and os.path.exists(dll_server):
+                            if self.python_injector(target_pid, dll_server):        
+                                print(f"[+] Late Injection: {os.path.basename(dll_server)} injected successfully.")
+                            else:
+                                print(f"[-] Late Injection failed for {os.path.basename(dll_server)}.")
                     else:
-                        print(f"[-] Late Injection failed for {os.path.basename(dll_memory)}.")
+                        dll_console = self.dll_console_var.get()
+                        if dll_console and os.path.exists(dll_console):
+                            if self.python_injector(target_pid, dll_console):       
+                                print(f"[+] Late Injection: {os.path.basename(dll_console)} injected successfully.")
+                            else:
+                                print(f"[-] Late Injection failed for {os.path.basename(dll_console)}.")
+                                
+        except Exception as e:
+            print(f"[-] Error parsing log stream: {e}")
 
-                # Late Inject: Console (Play) or Server (Host)
-                if is_host:
-                    try:
-                        import subprocess
-                        subprocess.run(f"FOR /F \"tokens=5\" %T IN ('netstat -a -n -o ^| findstr :7777') DO TaskKill.exe /PID %T /F", shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        print("[+] Ensured port 7777 is clear prior to hosting.")
-                    except:
-                        pass
+        # Revert Visuals and Discord RPC to menu state after game exits
+        if is_host:
+            self.host_process = None
+            if hasattr(self, 'host_btn'):
+                self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
+        else:
+            self.game_process = None
+            if hasattr(self, 'launch_btn'):
+                self.launch_btn.configure(text="Play", fg_color="#3b82f6", hover_color="#2563eb")
 
-                    dll_server = self.dll_server_var.get()
-                    if dll_server and os.path.exists(dll_server):
-                        if self.python_injector(target_pid, dll_server):
-                            print(f"[+] Late Injection: {os.path.basename(dll_server)} injected successfully.")
-                        else:
-                            print(f"[-] Late Injection failed for {os.path.basename(dll_server)}.")
-                else:
-                    dll_console = self.dll_console_var.get()
-                    if dll_console and os.path.exists(dll_console):
-                        if self.python_injector(target_pid, dll_console):
-                            print(f"[+] Late Injection: {os.path.basename(dll_console)} injected successfully.")
-                        else:
-                            print(f"[-] Late Injection failed for {os.path.basename(dll_console)}.")
-        # Revert Discord RPC to menu state after game exits
-        self.after(500, self.update_discord_rpc_state)
+        # Determine if any game processes are still actively running
+        any_running = False
+        if hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None:
+            any_running = True
+        if hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None:
+            any_running = True
+            
+        if not any_running:
+            self.game_running = False
+            self.after(500, self.update_discord_rpc_state)
+            
 if __name__ == "__main__":
     app = RebootLauncherApp()
     app.mainloop()

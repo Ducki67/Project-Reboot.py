@@ -2,3 +2,6 @@ customtkinter
 pillow
 psutil
 pypresence
+pywin32
+requests
+urllib3
