@@ -1,8 +1,13 @@
 # Project-Reboot.py
 Project Reboot launcher in python |  just a tiny ass made when i was bored :P
 
-This tiny project made for fun   and most of the code is kinda  AI made since i dont really know much python tbh with anyone  and i think i know more JS or Batch than this shit. :)
----
+This tiny project made for fun   and most of the code is kinda  AI made since i dont really know much python tbh with anyone  and i think i know more JS or Batch than this shit. :))
+
+<img width="100" height="100" alt="1000006469" src="https://github.com/user-attachments/assets/89645829-8109-49d0-b319-a05cf09889ba" />
+
+
+
+
 
 ## 🛠️ Requirements
 
