@@ -5,9 +5,31 @@
     "host_username": "PythonServer",
     "host_email": "server@projectreboot.py",
     "host_account_password": "HostPassword",
-    "path": "D:\\FortniteBuilds\\Ch3\\19.01\\19.01\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe",
-    "dll_console": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/console.dll",
-    "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/cobalt.dll",
+    "path": "Build 26.30-CL-28688692",
+    "builds": [
+        {
+            "name": "Build 1.7.2",
+            "exe": "D:\\FortniteBuilds\\Ch1\\1.7.2\\Build 1.7.2\\Build 1.7.2\\Fortnite\\Fortnite1\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+        },
+        {
+            "name": "Build 3.60",
+            "exe": "D:\\FortniteBuilds\\Ch1\\Fortnite v3.6\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+        },
+        {
+            "name": "Build 23.50-CL-24441668",
+            "exe": "D:\\FortniteBuilds\\Ch4\\23.50\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+        },
+        {
+            "name": "Build 8.51-CL-6165369",
+            "exe": "D:\\FortniteBuilds\\Ch1\\Fortnite 8.51\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+        },
+        {
+            "name": "Build 26.30-CL-28688692",
+            "exe": "D:\\FortniteBuilds\\Ch4\\26.30-CL-28688692\\26.30-CL-28688692\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+        }
+    ],
+    "dll_console": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/ErbiumClient.dll",
+    "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/Tellurium 3551.dll",
     "dll_memory": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/memory.dll",
     "dll_server": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/Erbium.dll",
     "backend_path": "C:/Users/sando/Documents/GitHub/Nexa-3551/start.bat",
@@ -22,6 +44,8 @@
     "host_autorun": false,
     "launch_args": "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -nobe -noeac -fromfl=eac -fltoken=h1cdhchd10150221h130eB56 -skippatchcheck",
     "rpc_enabled": true,
+    "dll_large_pak": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/LargePakPatch.dll",
+    "use_large_pak": false,
     "is_host": 1,
     "game_path": "D:/FortniteBuilds/Ch1/2.5.0/2.5/FortniteGame/Binaries/Win64/FortniteClient-Win64-Shipping.exe",
     "dll_path": "",

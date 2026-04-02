@@ -1,8 +1,9 @@
 import customtkinter as ctk
-import sys, os, json, time, threading, psutil, subprocess
+import sys, os, json, time, threading, psutil, subprocess, re, zipfile, urllib.request
 from ctypes import *
 from ctypes import wintypes
 from tkinter import filedialog, messagebox
+import http.server, urllib.error, urllib.parse, configparser
 
 try:
     from PIL import Image
@@ -24,7 +25,10 @@ PAGE_READWRITE = 0x04
 MAX_PATH = 260
 THREAD_SUSPEND_RESUME = 0x0002
 
-k32 = WinDLL('kernel32', use_last_error=True)
+k32   = WinDLL('kernel32', use_last_error=True)
+ntdll = WinDLL('ntdll',   use_last_error=True)
+ntdll.NtSuspendProcess.restype  = wintypes.LONG
+ntdll.NtSuspendProcess.argtypes = [wintypes.HANDLE]
 k32.OpenProcess.restype = wintypes.HANDLE
 k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 k32.VirtualAllocEx.restype = c_void_p
@@ -48,6 +52,7 @@ DEFAULT_CONFIG = {
     "host_email": "server@projectreboot.py",
     "host_account_password": "HostPassword",
     "path": "",
+    "builds": [],
     "dll_console": os.path.join(os.getcwd(), "dlls", "console.dll"),
     "dll_auth": os.path.join(os.getcwd(), "dlls", "Starfall.dll"),
     "dll_memory": os.path.join(os.getcwd(), "dlls", "memory.dll"),
@@ -62,8 +67,10 @@ DEFAULT_CONFIG = {
     "host_custom_args": "",
     "host_headless": False,
     "host_autorun": False,
-    "launch_args": "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -nobe -noeac -fromfl=eac -fltoken=h1cdhchd10150221h130eB56 -skippatchcheck",
-    "rpc_enabled": True
+    "launch_args": "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -skippatchcheck -nobe -fromfl=eac -fltoken=3db3ba5dcbd2e16703f3978d -caldera=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiYmU5ZGE1YzJmYmVhNDQwN2IyZjQwZWJhYWQ4NTlhZDQiLCJnZW5lcmF0ZWQiOjE2Mzg3MTcyNzgsImNhbGRlcmFHdWlkIjoiMzgxMGI4NjMtMmE2NS00NDU3LTliNTgtNGRhYjNiNDgyYTg2IiwiYWNQcm92aWRlciI6IkVhc3lBbnRpQ2hlYXQiLCJub3RlcyI6IiIsImZhbGxiYWNrIjpmYWxzZX0.VAWQB67RTxhiWOxx7DBjnzDnXyyEnX7OljJm-j2d88G_WgwQ9wrE6lwMEHZHjBd1ISJdUO1UVUqkfLdU5nofBQ",
+    "rpc_enabled": True,
+    "dll_large_pak": "",
+    "use_large_pak": False
 }
 
 class DiscordManager:
@@ -161,6 +168,274 @@ class SettingTile(ctk.CTkFrame):
              ent = ctk.CTkEntry(container, fg_color="#121212", border_width=1, border_color="#333333", text_color="#ffffff", font=("Segoe UI", 13), height=34, corner_radius=4, textvariable=entry_var)
              ent.pack(side="right", fill="x", expand=True, padx=(20, 20))
 
+# --- REBOOT CONSTANTS (mirrors game_constants.dart) ---
+_LOGGED_IN_LINES   = ["[UOnlineAccountCommon::ContinueLoggingIn]", "(Completed)"]
+_SHUTDOWN_LINE     = "FOnlineSubsystemGoogleCommon::Shutdown()"
+_CORRUPTED_ERRORS  = ["Critical error", "when 0 bytes remain", "Pak chunk signature", "LogWindows:Error: Fatal error!"]
+_CONNECT_ERRORS    = ["port 3551 failed: Connection refused", "Unable to login to Fortnite servers", "UOnlineAccountCommon::ForceLogout"]
+_MATCH_END_LINE    = "TeamsLeft: 1"
+_LAUNCHER_EXE      = "FortniteLauncher.exe"
+_EAC_EXE           = "FortniteClient-Win64-Shipping_EAC.exe"
+_REBOOT_DELAY_SECS = 10
+
+# Discord RPC image assets — exact build version matches (highest priority)
+_RPC_EXACT = {
+    "18.30": "ch2s8_1830",   "18.40": "ch2s8_1840",
+    "20.20": "ch3s2_2020",
+    "21.00": "ch3s3_2100",   "21.40": "ch3s3_2140",
+    "22.00": "ch3s4_2200",   "22.30": "ch3s4_2230",   "22.40": "ch3s4_2240",
+    "23.10": "ch4s1_2310",
+    "24.30": "ch4s2_2430",
+    "25.20": "ch4s3_2520",
+    "28.00": "ch5s1_2800",
+    "29.40": "ch5s2_2940",
+}
+
+# Major-version fallback — covers all builds of a season that lack their own exact asset
+_RPC_MAJOR = {
+    1:  "season1_to_season4",   2:  "season1_to_season4",
+    3:  "season1_to_season4",   4:  "season1_to_season4",
+    5:  "season5",
+    13: "chap2s3",
+    14: "chap2s4",
+    17: "chap2s7",
+    20: "ch3s2_20xx",   # all other Ch3S2 builds (not 20.20)
+    24: "ch4s2",        # all other Ch4S2 builds (not 24.30)
+    25: "ch4s3",        # all other Ch4S3 builds (not 25.20)
+    26: "ch4s4",
+    27: "s27",
+    28: "ch5s1",        # all other Ch5S1 builds (not 28.00)
+    29: "ch5s2",        # all other Ch5S2 builds (not 29.40)
+    30: "ch5s3",
+}
+
+def _rpc_image(build_ver: str) -> str:
+    """Return the best-matching Discord RPC asset key for a given build version string."""
+    if not build_ver or build_ver == "Unknown":
+        return "fortnite_noseason"
+    # Strip any trailing "-CL-XXXXXX" junk so lookups always work on clean "X.XX" strings
+    clean = re.sub(r'[-_]CL[-_]\d+', '', build_ver).strip().strip('-').strip()
+    # 1 — exact version match (e.g. "23.10" → ch4s1_2310)
+    if clean in _RPC_EXACT:
+        return _RPC_EXACT[clean]
+    # 2 — major-version season fallback (e.g. major=24 → ch4s2 for any 24.xx)
+    try:
+        major = int(clean.split('.')[0])
+        if major in _RPC_MAJOR:
+            return _RPC_MAJOR[major]
+    except Exception:
+        pass
+    # 3 — no match → generic
+    return "fortnite_noseason"
+
+# URLs for DLL auto-download (mirrors game_downloader.dart)
+_DLL_BASE_URL       = "https://github.com/Auties00/reboot_launcher/raw/master/gui/dependencies/dlls/"
+_REBOOT_DLL_URL     = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip"
+_REBOOT_S20_DLL_URL = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/RebootS20.zip"
+_LARGE_PAK_URL      = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
+
+# Global proxy server reference so we can shut it down and restart
+_proxy_server = None
+
+
+def _parse_username(username):
+    """Strip non-alphanumeric chars (mirrors Dart _parseUsername)."""
+    return re.sub(r'[^a-zA-Z0-9]', '', username) or "Player"
+
+
+def _build_args(username, password, host, headless, custom_args=""):
+    """Build launch args with case-insensitive deduplication (mirrors createRebootArgs)."""
+    if not password:
+        username = f"{_parse_username(username)}@projectreboot.dev"
+    password = password if password else "Rebooted"
+
+    # Use ordered dict with case-insensitive key dedup
+    args = {}
+    def _set(key, val=""):
+        args[key.upper()] = (key, val)
+
+    _set("-epicapp", "Fortnite")
+    _set("-epicenv", "Prod")
+    _set("-epiclocale", "en-us")
+    _set("-epicportal")
+    _set("-skippatchcheck")
+    _set("-nobe")
+    _set("-fromfl", "eac")
+    _set("-fltoken", "3db3ba5dcbd2e16703f3978d")
+    _set("-caldera", "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiYmU5ZGE1YzJmYmVhNDQwN2IyZjQwZWJhYWQ4NTlhZDQiLCJnZW5lcmF0ZWQiOjE2Mzg3MTcyNzgsImNhbGRlcmFHdWlkIjoiMzgxMGI4NjMtMmE2NS00NDU3LTliNTgtNGRhYjNiNDgyYTg2IiwiYWNQcm92aWRlciI6IkVhc3lBbnRpQ2hlYXQiLCJub3RlcyI6IiIsImZhbGxiYWNrIjpmYWxzZX0.VAWQB67RTxhiWOxx7DBjnzDnXyyEnX7OljJm-j2d88G_WgwQ9wrE6lwMEHZHjBd1ISJdUO1UVUqkfLdU5nofBQ")
+    _set("-AUTH_LOGIN", username)
+    _set("-AUTH_PASSWORD", password)
+    _set("-AUTH_TYPE", "epic")
+
+    if host:
+        _set("-nosplash")
+        _set("-nosound")
+        if headless:
+            _set("-nullrhi")
+
+    # Merge custom args (user overrides win, case-insensitive)
+    for token in custom_args.split():
+        sep = token.find("=")
+        if sep != -1:
+            k, v = token[:sep], token[sep+1:]
+        else:
+            k, v = token, ""
+        _set(k, v)
+
+    result = []
+    for (k, v) in args.values():
+        result.append(f"{k}={v}" if v else k)
+    return result
+
+
+def _kill_port(port):
+    """Kill any process listening on the given TCP port (mirrors killProcessByPort)."""
+    try:
+        r = subprocess.run(['netstat', '-ano', '-p', 'TCP'], capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            if f':{port} ' in line or f':{port}\t' in line:
+                parts = line.split()
+                pid = parts[-1] if parts else "0"
+                if pid.isdigit() and int(pid) > 4:
+                    subprocess.run(['taskkill', '/F', '/PID', pid], capture_output=True)
+    except Exception as e:
+        print(f"[-] kill_port({port}): {e}")
+
+
+def _nt_suspend_process(pid):
+    """Atomically suspend every thread in a process via NtSuspendProcess (mirrors Dart suspend())."""
+    PROCESS_SUSPEND_RESUME = 0x0800
+    h = k32.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not h:
+        return False
+    try:
+        ntdll.NtSuspendProcess(h)
+        return True
+    except Exception:
+        return False
+    finally:
+        k32.CloseHandle(h)
+
+
+def _find_exe(directory, exe_name):
+    """Recursively find an exe in a directory tree."""
+    for root, _, files in os.walk(directory):
+        for f in files:
+            if f.lower() == exe_name.lower():
+                return os.path.join(root, f)
+    return None
+
+
+def _write_matchmaker_config(base_dir, ip, port):
+    """Write game server IP/port to assets/backend/Config/config.ini."""
+    config_path = os.path.join(base_dir, "assets", "backend", "Config", "config.ini")
+    try:
+        cfg = configparser.RawConfigParser()
+        if os.path.exists(config_path):
+            cfg.read(config_path)
+        if not cfg.has_section("GameServer"):
+            cfg.add_section("GameServer")
+        cfg.set("GameServer", "ip", ip)
+        cfg.set("GameServer", "port", str(port))
+        with open(config_path, "w") as f:
+            cfg.write(f)
+    except Exception as e:
+        print(f"[-] write_matchmaker_config: {e}")
+
+
+def _write_default_input(base_dir, console_key="F8"):
+    """Write DefaultInput.ini with the configured console key."""
+    ini_path = os.path.join(base_dir, "assets", "backend", "CloudStorage", "DefaultInput.ini")
+    try:
+        content = f"[/Script/Engine.InputSettings]\n+ConsoleKeys=Tilde\n+ConsoleKeys={console_key}\n"
+        with open(ini_path, "w") as f:
+            f.write(content)
+    except Exception as e:
+        print(f"[-] write_default_input: {e}")
+
+
+class _ProxyHandler(http.server.BaseHTTPRequestHandler):
+    target = ""
+
+    def _forward(self, method):
+        url = self.__class__.target + self.path
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length) if length else None
+            hdrs = {k: v for k, v in self.headers.items()
+                    if k.lower() not in ('host', 'connection', 'transfer-encoding')}
+            req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                self.send_response(resp.status)
+                for k, v in resp.headers.items():
+                    if k.lower() not in ('transfer-encoding', 'connection'):
+                        self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(resp.read())
+        except Exception:
+            self.send_response(502)
+            self.end_headers()
+
+    def do_GET(self):    self._forward('GET')
+    def do_POST(self):   self._forward('POST')
+    def do_PUT(self):    self._forward('PUT')
+    def do_DELETE(self): self._forward('DELETE')
+    def do_PATCH(self):  self._forward('PATCH')
+    def log_message(self, *a): pass
+
+
+def _start_proxy(target_url):
+    """Start a local HTTP forward proxy on 127.0.0.1:3551 → target_url."""
+    global _proxy_server
+    if _proxy_server:
+        try:
+            _proxy_server.shutdown()
+        except Exception:
+            pass
+        _proxy_server = None
+
+    class Handler(_ProxyHandler):
+        pass
+    Handler.target = target_url.rstrip('/')
+    srv = http.server.HTTPServer(('127.0.0.1', 3551), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _proxy_server = srv
+    print(f"[+] Proxy started: 127.0.0.1:3551 → {target_url}")
+    return srv
+
+
+def _download_dll(name, dest_path, zip_url=None):
+    """Download a DLL from GitHub (mirrors DLL auto-download in Dart)."""
+    if os.path.exists(dest_path):
+        return True
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    try:
+        if zip_url:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
+                tmp = tf.name
+            print(f"[*] Downloading {name} from nightly...")
+            urllib.request.urlretrieve(zip_url, tmp)
+            with zipfile.ZipFile(tmp, 'r') as z:
+                for member in z.namelist():
+                    if member.lower().endswith('.dll'):
+                        z.extract(member, os.path.dirname(dest_path))
+                        extracted = os.path.join(os.path.dirname(dest_path), member)
+                        if extracted != dest_path:
+                            os.rename(extracted, dest_path)
+                        break
+            os.remove(tmp)
+        else:
+            url = _DLL_BASE_URL + name
+            print(f"[*] Downloading {name}...")
+            urllib.request.urlretrieve(url, dest_path)
+        print(f"[+] Downloaded {name}")
+        return True
+    except Exception as e:
+        print(f"[-] Failed to download {name}: {e}")
+        return False
+
+
 class RebootLauncherApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -186,6 +461,7 @@ class RebootLauncherApp(ctk.CTk):
         self.load_config()
 
         # Variables for settings
+        self.builds = self.settings.get("builds", [])
         self.path_var = ctk.StringVar(value=self.settings.get("path", ""))
         self.dll_console_var = ctk.StringVar(value=self.settings.get("dll_console", ""))
         self.dll_auth_var = ctk.StringVar(value=self.settings.get("dll_auth", ""))
@@ -207,7 +483,7 @@ class RebootLauncherApp(ctk.CTk):
         self.host_custom_args_var = ctk.StringVar(value=self.settings.get("host_custom_args", ""))
         self.host_headless_var = ctk.BooleanVar(value=self.settings.get("host_headless", False))
         self.host_autorun_var = ctk.BooleanVar(value=self.settings.get("host_autorun", False))
-        self.launch_args_var = ctk.StringVar(value=self.settings.get("launch_args", "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -nobe -noeac -fromfl=eac -fltoken=h1cdhchd10150221h130eB56 -skippatchcheck"))
+        self.launch_args_var = ctk.StringVar(value=self.settings.get("launch_args", "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -skippatchcheck -nobe -fromfl=eac -fltoken=3db3ba5dcbd2e16703f3978d -caldera=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiYmU5ZGE1YzJmYmVhNDQwN2IyZjQwZWJhYWQ4NTlhZDQiLCJnZW5lcmF0ZWQiOjE2Mzg3MTcyNzgsImNhbGRlcmFHdWlkIjoiMzgxMGI4NjMtMmE2NS00NDU3LTliNTgtNGRhYjNiNDgyYTg2IiwiYWNQcm92aWRlciI6IkVhc3lBbnRpQ2hlYXQiLCJub3RlcyI6IiIsImZhbGxiYWNrIjpmYWxzZX0.VAWQB67RTxhiWOxx7DBjnzDnXyyEnX7OljJm-j2d88G_WgwQ9wrE6lwMEHZHjBd1ISJdUO1UVUqkfLdU5nofBQ"))
         self.backend_type_var = ctk.StringVar(value=self.settings.get("backend_type", "Local"))
         self.backend_action_text = ctk.StringVar(value="Start" if self.backend_type_var.get() == "Embedded" else "Ping")
         self.backend_type_var.trace_add("write", self.update_backend_action_text)
@@ -218,6 +494,9 @@ class RebootLauncherApp(ctk.CTk):
         self.backend_autostart_var = ctk.BooleanVar(value=self.settings.get("backend_autostart", False))
         self.rpc_enabled_var = ctk.BooleanVar(value=self.settings.get("rpc_enabled", True))
         self.rpc_enabled_var.trace_add("write", self.update_discord_rpc_state)
+
+        self.dll_large_pak_var = ctk.StringVar(value=self.settings.get("dll_large_pak", ""))
+        self.use_large_pak_var = ctk.BooleanVar(value=self.settings.get("use_large_pak", False))
 
         self.discord = DiscordManager()
 
@@ -243,15 +522,81 @@ class RebootLauncherApp(ctk.CTk):
         # Show the window cleanly after a brief moment so the mainloop can catch up
         self.after(50, self.deiconify)
 
-    def update_discord_rpc_state(self, *args):
-        if hasattr(self, 'rpc_enabled_var'):
-            if getattr(self, 'game_running', False):
+    def update_discord_rpc_state(self, *args, active_nav=None):
+        try:
+            if not hasattr(self, 'rpc_enabled_var'):
                 return
-            if self.rpc_enabled_var.get():
-                self.discord.connect()
-                self.discord.update_state("In Launcher", "Browsing menus")      
-            else:
+
+            is_client_running = hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None
+            is_host_running = hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None
+            
+            # If game is running, but we're just clicking tabs, DO NOT UPDATE THE RPC AT ALL.
+            was_already_running = getattr(self, 'game_running', False)
+            self.game_running = bool(is_client_running or is_host_running)
+
+            if not self.rpc_enabled_var.get():
+                if hasattr(self.discord, 'clear_state'):
+                    self.discord.clear_state()
                 self.discord.disconnect()
+                return
+
+            self.discord.connect()
+
+            if self.game_running:
+                if active_nav is not None and was_already_running:
+                    return
+
+                selected_name = self.path_var.get()
+                exe_path = selected_name
+                for b in getattr(self, "builds", []):
+                    if b.get("name") == selected_name or b.get("path") == selected_name:
+                        exe_path = b.get("exe", b.get("path", ""))
+                        break
+                        
+                # Use cached version info from handle_launch (avoids re-scanning the exe)
+                build_ver = getattr(self, '_rpc_build_ver', None) or self.get_game_version(exe_path)[0]
+                cl_ver    = getattr(self, '_rpc_cl_ver',    None) or self.get_game_version(exe_path)[1]
+                clean_build = re.sub(r'[-_]CL[-_]\d+', '', build_ver).strip().strip('-').strip()
+                if clean_build and clean_build != "Unknown":
+                    cl_display = cl_ver if (cl_ver and cl_ver.isdigit()) else ""
+                    large_text = f"v{clean_build}" + (f"  ·  CL {cl_display}" if cl_display else "")
+                else:
+                    large_text = "Project Reboot"
+
+                large_image_key = _rpc_image(build_ver)
+
+                p_name = self.username_var.get()
+                h_name = self.host_username_var.get()
+                is_headless = self.host_headless_var.get()
+                
+                server_dll_name = ""
+                if hasattr(self, 'dll_server_var') and self.dll_server_var.get():
+                    server_dll_name = f" ({os.path.basename(self.dll_server_var.get())})"
+                
+                if is_client_running and is_host_running:
+                    state_msg = f"Running: Client and GameServer{server_dll_name}"
+                    details = "Playing Fortnite"
+                elif is_host_running:
+                    if is_headless:
+                        state_msg = f"Running: GameServer{server_dll_name}"
+                        details = "Hosting Fortnite"
+                    else:
+                        state_msg = f"Running: Client and GameServer{server_dll_name}"
+                        details = "Playing Fortnite"
+                else:
+                    state_msg = "Running: Client"
+                    details = "Playing Fortnite"
+                    
+                self.discord.update_state(state=state_msg, details=details,
+                                           large_image=large_image_key, small_image="rebootlogo",
+                                           small_text="Reboot.py", large_text=large_text)
+            else:
+                if not active_nav:
+                    active_nav = "Play"
+                user = self.username_var.get() if hasattr(self, 'username_var') else "PythonPlayer"
+                self.discord.update_state(state=f"Viewing {active_nav} tab", details=f"Logged in as {user}")
+        except Exception as e:
+            print(f"[-] RPC Crash: {e}")
 
     def update_backend_action_text(self, *args):
         if hasattr(self, 'backend_type_var') and hasattr(self, 'backend_action_text'):
@@ -294,6 +639,7 @@ class RebootLauncherApp(ctk.CTk):
 
     def save_config(self):
         self.settings["path"] = self.path_var.get()
+        self.settings["builds"] = getattr(self, "builds", [])
         self.settings["dll_console"] = self.dll_console_var.get()
         self.settings["dll_auth"] = self.dll_auth_var.get()
         self.settings["dll_memory"] = self.dll_memory_var.get()
@@ -319,6 +665,8 @@ class RebootLauncherApp(ctk.CTk):
         self.settings["backend_path"] = self.backend_path_var.get()
         self.settings["backend_autostart"] = self.backend_autostart_var.get()   
         self.settings["rpc_enabled"] = self.rpc_enabled_var.get()
+        self.settings["dll_large_pak"] = self.dll_large_pak_var.get()
+        self.settings["use_large_pak"] = self.use_large_pak_var.get()
         # Update sidebar dynamically
         self.user_lbl.configure(text=self.username_var.get())
         self.email_lbl.configure(text=self.email_var.get())
@@ -394,11 +742,26 @@ class RebootLauncherApp(ctk.CTk):
             self.pages[name] = f
             getattr(self, f"build_{name.lower()}_page")(f)
 
+    def _sync_button_states(self):
+        """Re-apply Play/Host button visuals to match actual running process state.
+        Called every time a page is shown so switching tabs never resets the button."""
+        is_client  = hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None
+        is_hosting = hasattr(self, 'host_process')  and self.host_process  and self.host_process.poll()  is None
+        if hasattr(self, 'launch_btn'):
+            if is_client:
+                self.launch_btn.configure(text="Stop Client", fg_color="#ef4444", hover_color="#dc2626")
+            else:
+                self.launch_btn.configure(text="Play",        fg_color="#3b82f6", hover_color="#2563eb")
+        if hasattr(self, 'host_btn'):
+            if is_hosting:
+                self.host_btn.configure(text="Stop Server", fg_color="#ef4444", hover_color="#dc2626")
+            else:
+                self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
+
     def show_page(self, name):
         for page in self.pages.values():
             page.grid_forget()
 
-        # Handle subpages correctly to map back to sidebar parents
         active_nav = name
         if name in ["InternalFiles", "AccountSettings"]:
             active_nav = "Settings"
@@ -408,27 +771,41 @@ class RebootLauncherApp(ctk.CTk):
             active_nav = "Host"
 
         for n, btn in self.nav_btns.items():
-            if n == active_nav:
-                btn.configure(fg_color="#1e1e1e") # Active state bg
-            else:
-                btn.configure(fg_color="transparent")
+            btn.configure(fg_color="#1e1e1e" if n == active_nav else "transparent")
 
         self.pages[name].grid(row=0, column=0, sticky="nsew", padx=40, pady=30)
-        self.save_config()
 
-        # Update Discord RPC with current tab
-        if hasattr(self, 'discord') and self.discord:
-            if hasattr(self, 'rpc_enabled_var') and not self.rpc_enabled_var.get():
-                self.discord.clear_state()
-            elif not getattr(self, 'game_running', False):
-                user = self.username_var.get() if hasattr(self, 'username_var') else "PythonPlayer"
-                self.discord.update_state(f"Viewing {active_nav} tab", f"Logged in as {user}")
+        # Always re-sync button colours after the page is visible
+        self._sync_button_states()
+
+        self.save_config()
+        self.update_discord_rpc_state(active_nav=active_nav)
 
     # --- PAGES ---
 
     def build_play_page(self, parent):
         ctk.CTkLabel(parent, text="Play", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
-        SettingTile(parent, "Installation directory", "Opens the installation directory", button_text="Browse", show_entry=True, entry_var=self.path_var, button_command=self.browse_game_dir)
+        
+        builds_frame = ctk.CTkFrame(parent, fg_color="#181818", corner_radius=5, height=78)
+        builds_frame.pack(fill="x", pady=6)
+        builds_frame.pack_propagate(False)
+
+        text_frame = ctk.CTkFrame(builds_frame, fg_color="transparent")
+        text_frame.pack(side="left", padx=20, fill="y", pady=15)
+        
+        ctk.CTkLabel(text_frame, text="Select Build", font=("Segoe UI", 15, "bold"), text_color="#f4f4f5", anchor="w").pack(fill="x", pady=(0, 2))
+        ctk.CTkLabel(text_frame, text="Choose a Fortnite version to launch or add a new one", font=("Segoe UI", 12), text_color="#a1a1aa", anchor="w").pack(fill="x")
+
+        # Let's add the button on the right
+        add_btn = ctk.CTkButton(builds_frame, text="+", font=("Segoe UI", 18, "bold"), fg_color="#2d2d2d", hover_color="#3d3d3d", text_color="white", width=34, height=34, corner_radius=4, command=self.add_build)
+        add_btn.pack(side="right", padx=(5, 20))
+        
+        rem_btn = ctk.CTkButton(builds_frame, text="-", font=("Segoe UI", 20, "bold"), fg_color="#ef4444", hover_color="#dc2626", text_color="white", width=34, height=34, corner_radius=4, command=self.remove_build)
+        rem_btn.pack(side="right", padx=(10, 5))
+        
+        self.build_option_menu = ctk.CTkOptionMenu(builds_frame, variable=self.path_var, values=[b.get("name", b.get("path")) for b in self.builds] if self.builds else ["No builds added"], fg_color="#2d2d2d", button_color="#3d3d3d", button_hover_color="#4d4d4d", dropdown_fg_color="#2d2d2d", width=250)
+        self.build_option_menu.pack(side="right", padx=(0, 0))
+
         SettingTile(parent, "Client Options", "Override engine arguments", button_text=">", is_subpage=True, button_command=lambda: self.show_page("ClientOptions"))
         
         self.launch_btn = ctk.CTkButton(parent, text="Play", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=self.handle_launch)
@@ -440,58 +817,41 @@ class RebootLauncherApp(ctk.CTk):
 
         controls_frame = ctk.CTkFrame(parent, fg_color="transparent")
         controls_frame.pack(fill="x", pady=(0, 20))
-        
         ctk.CTkLabel(controls_frame, text="Sort By:", text_color="#a1a1aa", font=("Segoe UI", 14)).pack(side="left", padx=(0, 10))
         sort_var = ctk.StringVar(value="Oldest to Latest (Low - High)")
-        
         view_var = ctk.StringVar(value="List View")
-        
+
         self.downloads_container = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         self.downloads_container.pack(fill="both", expand=True)
-
         loading_lbl = ctk.CTkLabel(self.downloads_container, text="Loading versions...", text_color="#a1a1aa")
         loading_lbl.pack(pady=20)
-        
+
         data_result = {}
         error_result = []
-        
+
         def fetch_versions():
             try:
-                import urllib.request
                 req = urllib.request.Request('https://builds.rebootfn.org/versions.json', headers={'User-Agent': 'Mozilla/5.0'})
-                data = json.loads(urllib.request.urlopen(req).read())
-                data_result['data'] = data
+                data_result['data'] = json.loads(urllib.request.urlopen(req).read())
             except Exception as e:
                 error_result.append(str(e))
-                
+
         def get_version_tuple(url):
-            import urllib.parse
-            filename = url.split('/')[-1]
-            filename = urllib.parse.unquote(filename)
-            version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ', '').replace('vFortnite', '').replace('Fortnite ', '').replace('Fortnite', '').strip()
+            filename = urllib.parse.unquote(url.split('/')[-1])
+            version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
             return tuple(int(x) for x in version_str.split('.') if x.isdigit())
 
         def render_versions(*args):
-            # Show a busy cursor or hide the container temporarily
             self.downloads_container.pack_forget()
-            
-            # Clear container first
-            for widget in self.downloads_container.winfo_children():
-                widget.destroy()
-                
+            for w in self.downloads_container.winfo_children():
+                w.destroy()
             versions = data_result.get('data', [])
             if not versions:
                 self.downloads_container.pack(fill="both", expand=True)
                 return
-                
-            sort_order = sort_var.get()
-            view_mode = view_var.get()
-            
-            # Sort the versions based on the option menu
-            is_descending = ("High - Low" in sort_order)
+            is_descending = "High - Low" in sort_var.get()
             sorted_versions = sorted(versions, key=get_version_tuple, reverse=is_descending)
-            
-            # If Blocks view, configure columns
+            view_mode = view_var.get()
             columns = 3
             if view_mode == "Blocks View":
                 for i in range(columns):
@@ -500,49 +860,48 @@ class RebootLauncherApp(ctk.CTk):
                 self.downloads_container.grid_columnconfigure((0, 1, 2), weight=0)
 
             for idx, url in enumerate(sorted_versions):
-                import urllib.parse
-                filename = url.split('/')[-1]
-                filename = urllib.parse.unquote(filename)
-                version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ', '').replace('vFortnite', '').replace('Fortnite ', '').replace('Fortnite', '').strip()
-                
-                parts = get_version_tuple(url)
-                is_valid = True
-                if parts:
-                    if parts[0] > 10 or (parts[0] == 10 and len(parts) > 1 and parts[1] > 31):
-                        is_valid = False
+                filename    = urllib.parse.unquote(url.split('/')[-1])
+                version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
+                parts    = get_version_tuple(url)
+                is_valid = not (parts and (parts[0] > 10 or (parts[0] == 10 and len(parts) > 1 and parts[1] > 31)))
+                tile     = ctk.CTkFrame(self.downloads_container, fg_color="#1E1E1E", corner_radius=8)
 
-                tile_frame = ctk.CTkFrame(self.downloads_container, fg_color="#1E1E1E", corner_radius=8)
-                
-                import webbrowser
-                def make_cmd(u=url): return lambda: webbrowser.open(u)
-                
                 if view_mode == "List View":
-                    tile_frame.pack(fill="x", pady=4, padx=5)
-                    
-                    lbl = ctk.CTkLabel(tile_frame, text=f"Version {version_str}", font=("Segoe UI", 15, "bold"), text_color="white" if is_valid else "#52525b")
-                    lbl.pack(side="left", padx=15, pady=15)
-                    
+                    tile.pack(fill="x", pady=4, padx=5)
+                    ctk.CTkLabel(tile, text=f"Version {version_str}", font=("Segoe UI", 15, "bold"),
+                                 text_color="white" if is_valid else "#52525b").pack(side="left", padx=15, pady=15)
                     if is_valid:
-                        btn = ctk.CTkButton(tile_frame, text="Download", width=100, fg_color="#2563eb", hover_color="#1d4ed8", command=make_cmd())
-                        btn.pack(side="right", padx=15)
+                        # Progress bar + status label (hidden until download starts)
+                        info_frame = ctk.CTkFrame(tile, fg_color="transparent")
+                        info_frame.pack(side="right", padx=15, fill="x", expand=True)
+                        prog_bar  = ctk.CTkProgressBar(info_frame, width=180, height=8, progress_color="#2563eb", fg_color="#2d2d2d")
+                        prog_bar.set(0)
+                        stat_lbl  = ctk.CTkLabel(info_frame, text="", font=("Segoe UI", 11), text_color="#a1a1aa")
+                        dl_btn    = ctk.CTkButton(tile, text="Download", width=100,
+                                                  fg_color="#2563eb", hover_color="#1d4ed8")
+                        dl_btn.pack(side="right", padx=(0, 10))
+                        dl_btn.configure(command=lambda u=url, vs=version_str, pb=prog_bar, sl=stat_lbl, b=dl_btn:
+                                         self._start_download(u, vs, pb, sl, b))
                     else:
-                        btn = ctk.CTkButton(tile_frame, text="Unsupported", width=100, fg_color="#3f3f46", hover_color="#3f3f46", state="disabled")
-                        btn.pack(side="right", padx=15)
+                        ctk.CTkButton(tile, text="Unsupported", width=100,
+                                      fg_color="#3f3f46", hover_color="#3f3f46", state="disabled").pack(side="right", padx=15)
                 else:
-                    # Blocks View
-                    r = idx // columns
-                    c = idx % columns
-                    tile_frame.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
-                    
-                    lbl = ctk.CTkLabel(tile_frame, text=f"v{version_str}", font=("Segoe UI", 18, "bold"), text_color="white" if is_valid else "#52525b")
-                    lbl.pack(pady=(15, 5))
-                    
+                    r, c = idx // columns, idx % columns
+                    tile.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
+                    ctk.CTkLabel(tile, text=f"v{version_str}", font=("Segoe UI", 18, "bold"),
+                                 text_color="white" if is_valid else "#52525b").pack(pady=(15, 5))
                     if is_valid:
-                        btn = ctk.CTkButton(tile_frame, text="Download", width=100, fg_color="#2563eb", hover_color="#1d4ed8", command=make_cmd())
-                        btn.pack(pady=(5, 15))
+                        prog_bar = ctk.CTkProgressBar(tile, width=140, height=8, progress_color="#2563eb", fg_color="#2d2d2d")
+                        prog_bar.set(0)
+                        stat_lbl = ctk.CTkLabel(tile, text="", font=("Segoe UI", 10), text_color="#a1a1aa")
+                        dl_btn   = ctk.CTkButton(tile, text="Download", width=100,
+                                                 fg_color="#2563eb", hover_color="#1d4ed8")
+                        dl_btn.pack(pady=(5, 15))
+                        dl_btn.configure(command=lambda u=url, vs=version_str, pb=prog_bar, sl=stat_lbl, b=dl_btn:
+                                         self._start_download(u, vs, pb, sl, b))
                     else:
-                        btn = ctk.CTkButton(tile_frame, text="Unsupported", width=100, fg_color="#3f3f46", hover_color="#3f3f46", state="disabled")
-                        btn.pack(pady=(5, 15))
+                        ctk.CTkButton(tile, text="Unsupported", width=100,
+                                      fg_color="#3f3f46", hover_color="#3f3f46", state="disabled").pack(pady=(5, 15))
 
             self.downloads_container.pack(fill="both", expand=True)
 
@@ -554,14 +913,158 @@ class RebootLauncherApp(ctk.CTk):
             else:
                 self.after(100, check_data)
 
-        sort_menu = ctk.CTkOptionMenu(controls_frame, variable=sort_var, values=["Latest to Oldest (High - Low)", "Oldest to Latest (Low - High)"], command=render_versions, fg_color="#1e1e1e", button_color="#252526", button_hover_color="#2d2d30")
+        sort_menu = ctk.CTkOptionMenu(controls_frame, variable=sort_var,
+                                      values=["Latest to Oldest (High - Low)", "Oldest to Latest (Low - High)"],
+                                      command=render_versions, fg_color="#1e1e1e",
+                                      button_color="#252526", button_hover_color="#2d2d30")
         sort_menu.pack(side="left")
-        
-        view_toggle = ctk.CTkSegmentedButton(controls_frame, values=["List View", "Blocks View"], variable=view_var, command=render_versions, selected_color="#2563eb", unselected_color="#1e1e1e")
+        view_toggle = ctk.CTkSegmentedButton(controls_frame, values=["List View", "Blocks View"],
+                                              variable=view_var, command=render_versions,
+                                              selected_color="#2563eb", unselected_color="#1e1e1e")
         view_toggle.pack(side="right", padx=(10, 0))
-
         threading.Thread(target=fetch_versions, daemon=True).start()
         self.after(100, check_data)
+
+    def _start_download(self, url, version_str, prog_bar, stat_lbl, dl_btn):
+        """Download a build with progress, then offer to extract."""
+        save_dir = filedialog.askdirectory(title=f"Choose folder to save Fortnite {version_str}")
+        if not save_dir:
+            return
+
+        filename = urllib.parse.unquote(url.split('/')[-1])
+        dest     = os.path.join(save_dir, filename)
+
+        # Lock the button while downloading
+        dl_btn.configure(state="disabled", text="Downloading…", fg_color="#1d4020")
+        prog_bar.pack(pady=(0, 2))
+        stat_lbl.pack()
+
+        aria2c = os.path.join(self.base_dir, "assets", "build", "aria2c.exe")
+
+        def run():
+            cancelled = [False]
+
+            # ── aria2c path ──────────────────────────────────────────────────
+            if os.path.exists(aria2c):
+                cmd = [
+                    aria2c,
+                    "-x", "16", "-s", "16", "-k", "1M",
+                    "--dir", save_dir,
+                    "--out", filename,
+                    "--console-log-level=notice",
+                    "--summary-interval=1",
+                    url
+                ]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, encoding="utf-8", errors="replace")
+                # aria2c progress line looks like:
+                # [#abc 45MiB/230MiB(19%) CN:16 DL:8.5MiB/s ETA:22s]
+                aria_re = re.compile(
+                    r'\((\d+)%\).*DL:([\d\.]+\w+/s)(?:.*ETA:([\d]+s))?'
+                )
+                for line in proc.stdout:
+                    m = aria_re.search(line)
+                    if m:
+                        pct  = int(m.group(1)) / 100
+                        spd  = m.group(2)
+                        eta  = m.group(3) or ""
+                        txt  = f"{int(pct*100)}%  ·  {spd}" + (f"  ·  ETA {eta}" if eta else "")
+                        self.after(0, lambda p=pct, t=txt: (prog_bar.set(p), stat_lbl.configure(text=t)))
+                proc.wait()
+                ok = proc.returncode == 0 and os.path.exists(dest)
+
+            # ── urllib fallback ──────────────────────────────────────────────
+            else:
+                try:
+                    req  = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                    resp = urllib.request.urlopen(req)
+                    total = int(resp.headers.get("Content-Length", 0))
+                    done  = 0
+                    t0    = time.time()
+                    chunk = 65536
+                    with open(dest, "wb") as f:
+                        while True:
+                            buf = resp.read(chunk)
+                            if not buf:
+                                break
+                            f.write(buf)
+                            done += len(buf)
+                            elapsed = max(time.time() - t0, 0.001)
+                            spd  = done / elapsed
+                            pct  = done / total if total else 0
+                            def _upd(p=pct, d=done, t=total, s=spd):
+                                prog_bar.set(p)
+                                dmb = f"{d/1048576:.1f}"
+                                tmb = f"{t/1048576:.1f}" if t else "?"
+                                smb = f"{s/1048576:.1f}"
+                                stat_lbl.configure(text=f"{dmb} / {tmb} MB  ·  {smb} MB/s")
+                            self.after(0, _upd)
+                    ok = True
+                except Exception as e:
+                    ok = False
+                    self.after(0, lambda err=e: messagebox.showerror("Download Error", str(err)))
+
+            if ok:
+                self.after(0, lambda: _on_done(dest))
+            else:
+                self.after(0, lambda: (
+                    dl_btn.configure(state="normal", text="Download", fg_color="#2563eb"),
+                    prog_bar.set(0),
+                    stat_lbl.configure(text="Failed.")
+                ))
+
+        def _on_done(dest_path):
+            prog_bar.set(1.0)
+            stat_lbl.configure(text="Done!")
+            dl_btn.configure(state="normal", text="Done ✓", fg_color="#16a34a", hover_color="#15803d")
+
+            if messagebox.askyesno("Download Complete",
+                                   f"Downloaded:\n{os.path.basename(dest_path)}\n\nExtract now?"):
+                extract_to = filedialog.askdirectory(title="Choose extraction folder")
+                if extract_to:
+                    self._extract_build(dest_path, extract_to, stat_lbl)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _extract_build(self, archive_path, extract_to, stat_lbl=None):
+        """Extract a zip/rar build archive using 7zip or winrar from assets/build."""
+        sevenzip = os.path.join(self.base_dir, "assets", "build", "7zip.exe")
+        winrar   = os.path.join(self.base_dir, "assets", "build", "winrar.exe")
+
+        if archive_path.lower().endswith(".rar") and os.path.exists(winrar):
+            cmd = [winrar, "x", "-y", archive_path, extract_to + "\\"]
+        elif os.path.exists(sevenzip):
+            cmd = [sevenzip, "x", archive_path, f"-o{extract_to}", "-y"]
+        else:
+            messagebox.showerror("Extract Error", "No extractor found in assets/build (7zip.exe / winrar.exe).")
+            return
+
+        if stat_lbl:
+            self.after(0, lambda: stat_lbl.configure(text="Extracting…"))
+
+        def run():
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, encoding="utf-8", errors="replace")
+                # 7zip outputs "XX%" lines we can parse
+                pct_re = re.compile(r'(\d+)%')
+                for line in proc.stdout:
+                    m = pct_re.search(line)
+                    if m and stat_lbl:
+                        pct = int(m.group(1)) / 100
+                        self.after(0, lambda p=pct: stat_lbl.configure(text=f"Extracting… {int(p*100)}%"))
+                proc.wait()
+                if proc.returncode == 0:
+                    self.after(0, lambda: (
+                        stat_lbl.configure(text="Extracted!") if stat_lbl else None,
+                        messagebox.showinfo("Done", f"Extracted to:\n{extract_to}")
+                    ))
+                else:
+                    self.after(0, lambda: messagebox.showerror("Extract Error", "Extraction failed."))
+            except Exception as e:
+                self.after(0, lambda err=e: messagebox.showerror("Extract Error", str(err)))
+
+        threading.Thread(target=run, daemon=True).start()
 
     def build_clientoptions_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -663,13 +1166,11 @@ class RebootLauncherApp(ctk.CTk):
         
         SettingTile(parent, "Account options", "Configure your mock username and password", button_text=">", is_subpage=True, button_command=lambda: self.show_page("AccountSettings"))
         SettingTile(parent, "Discord Activity", "Show your status playing Reboot on Discord", is_switch=True, switch_var=self.rpc_enabled_var)
+        SettingTile(parent, "LargePakPatch", "Inject LargePakPatch.dll after login for custom mods — auto-downloads from Atlas Link", is_switch=True, switch_var=self.use_large_pak_var)
         SettingTile(parent, "Language", "Select the language to use inside the launcher", button_text="English")
         SettingTile(parent, "Theme", "Select the theme to use inside the launcher", button_text="Dark")
-        
-        # Clicking this navigates to the 'InternalFiles' page, replicating ">" list traversal
         SettingTile(parent, "Internal files", "Configure the internal files used by the launcher", button_text=">", is_subpage=True, button_command=lambda: self.show_page("InternalFiles"))
-
-        SettingTile(parent, "Installation directory", "Opens the installation directory", button_text="Browse", show_entry=True, entry_var=self.path_var, button_command=self.browse_game_dir)
+        SettingTile(parent, "Add Game Build", "Select a game directory to add to the launcher", button_text="Browse", show_entry=True, entry_var=self.path_var, button_command=self.add_build)
 
     def build_internalfiles_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -684,6 +1185,8 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend", button_text="Browse", show_entry=True, entry_var=self.dll_auth_var, button_command=lambda: self.browse_dll(self.dll_auth_var))
         SettingTile(parent, "Memory patcher", "Prevents the client from crashing because of a memory leak", button_text="Browse", show_entry=True, entry_var=self.dll_memory_var, button_command=lambda: self.browse_dll(self.dll_memory_var))
         SettingTile(parent, "Game server", "The file injected to create the game server", button_text="Browse", show_entry=True, entry_var=self.dll_server_var, button_command=lambda: self.browse_dll(self.dll_server_var))
+
+        SettingTile(parent, "LargePakPatch DLL", "Custom path — leave blank to auto-download", button_text="Browse", show_entry=True, entry_var=self.dll_large_pak_var, button_command=lambda: self.browse_dll(self.dll_large_pak_var))
 
     def build_accountsettings_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
@@ -704,12 +1207,52 @@ class RebootLauncherApp(ctk.CTk):
 
     # --- ACTION LOGIC ---
 
-    def browse_game_dir(self):
+    def remove_build(self):
+        selected = self.path_var.get()
+        if not selected or selected == "No builds added":
+            return
+            
+        confirm = messagebox.askyesno("Remove Build", f"Are you sure you want to remove '{selected}' from the launcher?")
+        if not confirm:
+            return
+            
+        self.builds = [b for b in self.builds if b.get("name", b.get("path")) != selected]
+        self.save_config()
+        
+        if hasattr(self, 'build_option_menu'):
+            new_values = [b.get("name", b.get("path")) for b in self.builds]
+            if not new_values:
+                new_values = ["No builds added"]
+                self.path_var.set("No builds added")
+            else:
+                self.path_var.set(new_values[0])
+            self.build_option_menu.configure(values=new_values)
+
+    def add_build(self):
         f = filedialog.askdirectory(title="Select Game Directory (e.g. Fortnite v3.6)")
         if f:
             exe = os.path.join(f, "FortniteGame/Binaries/Win64/FortniteClient-Win64-Shipping.exe").replace("/", os.sep)
-            self.path_var.set(exe)
+            if not os.path.exists(exe):
+                messagebox.showerror("Error", f"Could not find Fortnite executable at:\n{exe}")
+                return
+                
+            build_name, cl = self.get_game_version(exe)
+            display_name = f"Build {build_name}" if build_name != "Unknown" else os.path.basename(f)
+            
+            # Check if already exists
+            for b in self.builds:
+                if b.get("exe") == exe:
+                    self.path_var.set(b.get("name", display_name))
+                    return
+            
+            new_build = {"name": display_name, "exe": exe}
+            self.builds.append(new_build)
             self.save_config()
+            
+            if hasattr(self, 'build_option_menu'):
+                self.build_option_menu.configure(values=[b.get("name", b.get("path")) for b in self.builds])
+            
+            self.path_var.set(display_name)
 
     def browse_dll(self, str_var):
         f = filedialog.askopenfilename(filetypes=[("DLL Files", "*.dll")])
@@ -724,43 +1267,66 @@ class RebootLauncherApp(ctk.CTk):
             self.save_config()
 
     def start_backend(self):
+        # Write DefaultInput.ini so the console key is always current
+        _write_default_input(self.base_dir)
+
         backend_type = self.backend_type_var.get()
+
         if backend_type == "Embedded":
             bpath = self.settings.get("backend_path", "")
-            if os.path.exists(bpath):
-                dir_name = os.path.dirname(bpath)
-                if bpath.lower().endswith(".bat"):
-                    subprocess.Popen(["cmd.exe", "/c", bpath], cwd=dir_name, creationflags=subprocess.CREATE_NEW_CONSOLE)
-                else:
-                    subprocess.Popen([bpath], cwd=dir_name, creationflags=0x08000000)
-            else:
+            bpath = os.path.join(self.base_dir, bpath) if not os.path.isabs(bpath) else bpath
+            if not os.path.exists(bpath):
                 messagebox.showerror("Error", "Embedded backend executable not found.")
+                return
+
+            # Kill anything already on 3551 and 80 before starting (mirrors Dart port cleanup)
+            _kill_port(3551)
+            _kill_port(80)
+
+            dir_name = os.path.dirname(bpath)
+            if bpath.lower().endswith(".bat"):
+                subprocess.Popen(["cmd.exe", "/c", bpath], cwd=dir_name,
+                                  creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([bpath], cwd=dir_name, creationflags=0x08000000)
+
+            print("[+] Embedded backend started.")
+
         elif backend_type in ["Remote", "Local"]:
-            import urllib.request
-            import urllib.error
-            import threading
-            
             if backend_type == "Remote":
-                url = self.backend_url_var.get().strip()
-                if not url.startswith("http"):
-                    url = "http://" + url
+                target_url = self.backend_url_var.get().strip()
+                if not target_url.startswith("http"):
+                    target_url = "http://" + target_url
             else:
                 port = self.backend_port_var.get().strip()
-                url = f"http://127.0.0.1:{port}"
-            
-            def ping_thread():
+                target_url = f"http://127.0.0.1:{port}"
+
+            def ping_and_proxy():
                 try:
-                    response = urllib.request.urlopen(url, timeout=3)
-                    self.after(0, lambda: messagebox.showinfo("Success", f"Server is online \nVersion: unknown"))
-                except urllib.error.HTTPError as e:
-                    # If we get an HTTP error like 404, the server is still reachable.
-                    self.after(0, lambda: messagebox.showinfo("Success", f"Server is online \nVersion: unknown"))
-                except urllib.error.URLError as e:
-                    self.after(0, lambda: messagebox.showerror("Error", f"Failed to reach {backend_type} backend:\n{e.reason}"))
+                    req = urllib.request.Request(target_url, headers={"User-Agent": "RebootLauncher"})
+                    urllib.request.urlopen(req, timeout=5)
+                    reachable = True
+                except urllib.error.HTTPError:
+                    reachable = True   # HTTP error means server responded
                 except Exception as e:
-                    self.after(0, lambda: messagebox.showerror("Error", f"Failed to reach {backend_type} backend:\n{e}"))
-            
-            threading.Thread(target=ping_thread, daemon=True).start()
+                    reachable = False
+                    self.after(0, lambda err=e: messagebox.showerror(
+                        "Error", f"Failed to reach {backend_type} backend:\n{err}"))
+
+                if reachable:
+                    # For remote or non-3551 local: start proxy so auth DLL can always
+                    # hit 127.0.0.1:3551 (mirrors shelf_proxy in Dart)
+                    needs_proxy = (backend_type == "Remote") or \
+                                  (backend_type == "Local" and
+                                   self.backend_port_var.get().strip() != "3551")
+                    if needs_proxy:
+                        _kill_port(3551)
+                        _start_proxy(target_url)
+                    self.after(0, lambda: messagebox.showinfo(
+                        "Success", "Server is online" +
+                        ("\nProxy running on 127.0.0.1:3551" if needs_proxy else "")))
+
+            threading.Thread(target=ping_and_proxy, daemon=True).start()
         else:
             messagebox.showerror("Error", "Backend not found!")
 
@@ -809,25 +1375,116 @@ class RebootLauncherApp(ctk.CTk):
             return success
         except: return False
 
+    def get_cl_mapping(self, cl):
+        if not hasattr(self, 'cl_mappings'):
+            self.cl_mappings = {}
+            mapping_file = os.path.join(self.base_dir, "cl_mapping.json")
+            if os.path.exists(mapping_file):
+                try:
+                    with open(mapping_file, "r") as f:
+                        self.cl_mappings = json.load(f)
+                except Exception:
+                    pass
+            # Fetch from helix-dev-q archive if CL isn't mapped
+            if cl and cl not in self.cl_mappings:
+                try:
+                    import urllib.request, re, json
+                    req = urllib.request.Request('https://raw.githubusercontent.com/Helix-Dev-Q/fortnite-builds-archive/main/README.md', headers={'User-Agent': 'Mozilla/5.0'})
+                    html = urllib.request.urlopen(req, timeout=3).read().decode('utf-8')
+                    # Parse both markdown table formats for versions and CLs
+                    matches = re.findall(r'\|\s*([a-zA-Z0-9\.]+)(?:\s+\(.*?-CL-(\d+)\)|-CL-(\d+))\s*\|', html)
+                    for m in matches:
+                        v = m[0]
+                        c = m[1] if m[1] else m[2]
+                        if c:
+                            self.cl_mappings[c] = v
+                            
+                    # Cache the mapping
+                    with open(mapping_file, "w") as f:
+                        json.dump(self.cl_mappings, f, indent=4)
+                except Exception as e:
+                    print(f"Failed to fetch CL mappings: {e}")
+        
+        return self.cl_mappings.get(str(cl))
+
     def get_game_version(self, exe_path):
+        """
+        Mirrors Dart extractGameVersion(): reads CrashReportClient.exe (not the
+        shipping exe) because the shipping exe only stores the UE engine version
+        (e.g. 4.25.0.0) while CrashReportClient has the full Fortnite build
+        string like: 4.25.0-14702800+++Fortnite+Release-12.41
+        """
         build, cl = "Unknown", "Unknown"
+        bin_dir = os.path.dirname(exe_path)
+        game_root = os.path.dirname(os.path.dirname(os.path.dirname(bin_dir)))  # up from Win64/Binaries/FortniteGame
+
+        # Find CrashReportClient.exe anywhere under the game root (mirrors Dart findFiles)
+        crc_exe = _find_exe(game_root, "CrashReportClient.exe") or \
+                  _find_exe(bin_dir,   "CrashReportClient.exe")
+
+        def _parse_prod_string(prod):
+            """Extract (release_ver, cl) from a ProductVersion string."""
+            b, c = None, None
+            if "Release-" in prod:
+                b = prod.split("Release-")[-1].split()[0].strip()
+            if '-' in prod and '+' in prod:
+                try:
+                    c = prod.split('-')[1].split('+')[0]
+                except Exception:
+                    pass
+            return b, c
+
+        # --- Try win32api on CrashReportClient.exe first ---
+        if crc_exe:
+            try:
+                import win32api
+                lang, cp = win32api.GetFileVersionInfo(crc_exe, r'\VarFileInfo\Translation')[0]
+                si = f'\\StringFileInfo\\{lang:04X}{cp:04X}\\ProductVersion'
+                prod = win32api.GetFileVersionInfo(crc_exe, si) or ""
+                b, c = _parse_prod_string(prod)
+                if b: build = b
+                if c: cl    = c
+                if build != "Unknown":
+                    mapped = self.get_cl_mapping(cl)
+                    if mapped: build = mapped
+                    return build, cl
+            except Exception:
+                pass
+
+        # --- Binary scan of CrashReportClient.exe (UTF-16LE, mirrors Dart property scan) ---
+        for scan_path in filter(None, [crc_exe, exe_path]):
+            try:
+                with open(scan_path, 'rb') as f:
+                    raw = f.read(4_000_000)
+                # Try UTF-16LE first (the property store stores it wide)
+                for data in (raw.replace(b'\x00', b''), raw):
+                    m = re.search(
+                        rb'\d+\.\d+\.\d+-(\d+)\+\+\+Fortnite\+Release-([a-zA-Z0-9\.]+)',
+                        data
+                    )
+                    if m:
+                        cl    = m.group(1).decode('utf-8', errors='ignore')
+                        build = m.group(2).decode('utf-8', errors='ignore')
+                        mapped = self.get_cl_mapping(cl)
+                        if mapped: build = mapped
+                        return build, cl
+            except Exception:
+                pass
+
+        # --- Last resort: win32api on the shipping exe itself ---
         try:
             import win32api
-            lang, codepage = win32api.GetFileVersionInfo(exe_path, '\\VarFileInfo\\Translation')[0]
-            strInfo = u'\\StringFileInfo\\%04X%04X\\%s' % (lang, codepage, "ProductVersion")
-            prod = win32api.GetFileVersionInfo(exe_path, strInfo)
-            cl = prod.split('-')[1].split('+')[0]
-            build = prod.split('Release-')[1]
-            return build, cl
-        except Exception: pass
-        try:
-            import re
-            with open(exe_path, 'rb') as f:
-                data = f.read(1000000) # Read only first MBs as fallback
-                data_no_nulls = data.replace(b'\x00', b'')
-                match = re.search(rb'\d+\.\d+\.\d+-(\d+)\+\+\+Fortnite\+Release-([a-zA-Z0-9\.]+)', data_no_nulls)
-                if match: return match.group(2).decode('utf-8'), match.group(1).decode('utf-8')
-        except Exception: pass
+            lang, cp = win32api.GetFileVersionInfo(exe_path, r'\VarFileInfo\Translation')[0]
+            si = f'\\StringFileInfo\\{lang:04X}{cp:04X}\\ProductVersion'
+            prod = win32api.GetFileVersionInfo(exe_path, si) or ""
+            b, c = _parse_prod_string(prod)
+            if b: build = b
+            if c: cl    = c
+            mapped = self.get_cl_mapping(cl)
+            if mapped: build = mapped
+        except Exception:
+            pass
+
         return build, cl
 
     def patch_headless(self, exe_path):
@@ -848,7 +1505,7 @@ class RebootLauncherApp(ctk.CTk):
             print(f"[-] Could not patch headless mode binary: {e}")
 
     def handle_launch(self, is_host=False):
-        # Stop process if already running
+        # --- Toggle: stop if already running ---
         if is_host:
             if hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None:
                 self.host_process.kill()
@@ -859,68 +1516,149 @@ class RebootLauncherApp(ctk.CTk):
                 return
 
         self.save_config()
-        exe_path = self.path_var.get()
+
+        # --- Resolve exe path from build list ---
+        selected_name = self.path_var.get()
+        exe_path = selected_name
+        for b in getattr(self, "builds", []):
+            if b.get("name") == selected_name or b.get("path") == selected_name:
+                exe_path = b.get("exe", b.get("path", ""))
+                break
+
         if not os.path.exists(exe_path):
             messagebox.showerror("Error", "Game executable not found in path!")
             return
 
         bin_dir = os.path.dirname(exe_path)
-        exe_name = os.path.basename(exe_path)
 
-        # Remove Aftermath crash DLL if it exists
-        aftermath_dll = os.path.join(bin_dir, "GFSDK_Aftermath_Lib.x64.dll")
-        if os.path.exists(aftermath_dll):
+        # --- Port conflict check: game server port must not be 3551 ---
+        game_port = self.host_port_var.get().strip()
+        if is_host and game_port == "3551":
+            messagebox.showerror("Error", "Game server port cannot be 3551 (conflicts with backend).\nChange it in Host > Options.")
+            return
+
+        # --- Headless binary patch ---
+        if is_host and self.host_headless_var.get():
+            self.patch_headless(exe_path)
+
+        # --- Delete Aftermath crash DLL ---
+        aftermath = os.path.join(bin_dir, "GFSDK_Aftermath_Lib.x64.dll")
+        if os.path.exists(aftermath):
             try:
-                os.remove(aftermath_dll)
-                print(f"[+] Deleted {aftermath_dll} to prevent game server crashes.")
+                os.remove(aftermath)
+                print(f"[+] Deleted Aftermath DLL.")
             except Exception as e:
-                print(f"[-] Could not delete {aftermath_dll}: {e}")
+                print(f"[-] Could not delete Aftermath DLL: {e}")
 
+        # --- Write matchmaking IP to config.ini when hosting ---
         if is_host:
-            if self.host_headless_var.get():
-                self.patch_headless(exe_path)
-            
-            em = self.settings.get("host_email", "hostvprojectreboot.py")
-            pw = self.settings.get("host_account_password", "12345678")
-            un = self.settings.get("host_username", "Host")
+            _write_matchmaker_config(self.base_dir, "127.0.0.1", game_port or "7777")
+
+        # --- Detect game major version + cache build info for RPC ---
+        major_version = 0
+        try:
+            import win32api
+            info = win32api.GetFileVersionInfo(exe_path, '\\')
+            major_version = info['FileVersionMS'] >> 16
+        except Exception:
+            pass
+        # Full version scan — cached on self so update_discord_rpc_state never re-scans
+        _bv, _cl = self.get_game_version(exe_path)
+        self._rpc_build_ver = _bv
+        self._rpc_cl_ver    = _cl
+
+        # --- Auto-download missing DLLs ---
+        dll_dir = os.path.join(self.base_dir, "dlls")
+        def _ensure(var, name, zip_url=None):
+            p = var.get()
+            if not p or not os.path.exists(p):
+                default = os.path.join(dll_dir, name)
+                _download_dll(name, default, zip_url)
+                if os.path.exists(default):
+                    var.set(default)
+                    self.save_config()
+        _ensure(self.dll_auth_var,    "sinum.dll")
+        _ensure(self.dll_console_var, "console.dll")
+        _ensure(self.dll_memory_var,  "memory.dll")
+        # S20-aware server DLL selection (mirrors Dart reboot.dll / rebootS20.dll)
+        if major_version >= 20:
+            _ensure(self.dll_server_var, "rebootS20.dll", _REBOOT_S20_DLL_URL)
         else:
-            em = self.settings.get("email", "playervprojectreboot.py")
-            pw = self.settings.get("password", "12345678")
-            un = self.settings.get("username", "Player")
+            _ensure(self.dll_server_var, "reboot.dll", _REBOOT_DLL_URL)
+        # LargePakPatch — auto-download if toggle on and file missing
+        if self.use_large_pak_var.get():
+            _ensure(self.dll_large_pak_var, "LargePakPatch.dll", _LARGE_PAK_URL)
 
-        # Arguments logic exactly matched to old codebase args
-        # Append email/password to the custom arguments dynamically
-        base_args = self.launch_args_var.get()
-        if "-AUTH_LOGIN=" not in base_args:
-             base_args += f' -AUTH_LOGIN={em} -AUTH_PASSWORD={pw} -AUTH_TYPE=epic'
-
+        # --- Build auth args using Dart-identical logic ---
         if is_host:
-             base_args += ' -nosplash -nosound'
+            username = self.settings.get("host_username", "Host")
+            password = self.settings.get("host_account_password", "")
+        else:
+            username = self.settings.get("username", "Player")
+            password = self.settings.get("password", "")
 
-             if self.host_headless_var.get():
-                 base_args += ' -nullrhi'
+        custom_args = self.host_custom_args_var.get() if is_host else ""
+        # Also fold in port / maxplayers as custom tokens for host
+        if is_host:
+            if game_port:
+                custom_args += f" -port={game_port}"
+            max_p = self.host_max_players_var.get().strip()
+            if max_p:
+                custom_args += f" -maxplayers={max_p}"
 
-             port = self.host_port_var.get()
-             if port:
-                 base_args += f' -port={port}'
+        args_list = _build_args(
+            username, password,
+            is_host, self.host_headless_var.get() if is_host else False,
+            custom_args.strip()
+        )
 
-             custom_host_args = self.host_custom_args_var.get()
-             if custom_host_args:
-                 base_args += ' ' + custom_host_args
-
-             max_players = self.host_max_players_var.get()
-             if max_players:
-                 base_args += f' -maxplayers={max_players}'
-
-        import shlex
-        args_list = shlex.split(base_args)
         launch_cmd = [exe_path] + args_list
+        launch_env = os.environ.copy()
+        launch_env["OPENSSL_ia32cap"] = "~0x20000000"   # mirrors Dart environment
 
-        # Use shell=False and stdout=subprocess.PIPE to read log reliably
+        # --- Start FortniteLauncher.exe and EAC exe SUSPENDED (bypass EAC) ---
+        # Search upward: EAC lives in Win64/, Launcher can be anywhere up to game root
+        game_root = bin_dir
+        for _ in range(4):
+            game_root = os.path.dirname(game_root)
+
+        paused_pids = []
+        search_map = {
+            _EAC_EXE:      [bin_dir],                              # always in Win64/
+            _LAUNCHER_EXE: [game_root, os.path.dirname(bin_dir),   # root, Binaries/, Win64/
+                            os.path.dirname(os.path.dirname(bin_dir)), bin_dir],
+        }
+        for suspended_name, search_dirs in search_map.items():
+            sus_exe = None
+            for d in search_dirs:
+                sus_exe = _find_exe(d, suspended_name)
+                if sus_exe:
+                    break
+            if not sus_exe:
+                print(f"[!] {suspended_name} not found — skipping suspension")
+                continue
+            try:
+                # CREATE_SUSPENDED|CREATE_NO_WINDOW = 0x08000004
+                # Primary thread starts suspended before ANY code runs
+                sus_proc = subprocess.Popen(
+                    [sus_exe],
+                    cwd=os.path.dirname(sus_exe),
+                    env=launch_env,
+                    creationflags=0x08000004
+                )
+                # Reinforce with NtSuspendProcess (atomic, covers any threads already created)
+                _nt_suspend_process(sus_proc.pid)
+                paused_pids.append(sus_proc.pid)
+                print(f"[+] Suspended {suspended_name} (pid={sus_proc.pid})")
+            except Exception as e:
+                print(f"[-] Could not suspend {suspended_name}: {e}")
+
+        # --- Start the actual game process ---
         proc = subprocess.Popen(
             launch_cmd,
             cwd=bin_dir,
             shell=False,
+            env=launch_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -928,6 +1666,7 @@ class RebootLauncherApp(ctk.CTk):
             encoding='utf-8',
             errors='replace'
         )
+        print(f"[+] Game process started: pid={proc.pid}")
 
         if is_host:
             self.host_process = proc
@@ -938,118 +1677,162 @@ class RebootLauncherApp(ctk.CTk):
             if hasattr(self, 'launch_btn'):
                 self.launch_btn.configure(text="Stop Client", fg_color="#ef4444", hover_color="#dc2626")
 
-        # Determine the precise discord running state
-        is_headless = self.host_headless_var.get() if hasattr(self, 'host_headless_var') else False
+        is_headless = self.host_headless_var.get() if is_host else False
         
-        if is_host and is_headless:
-            state_msg = "Running GameServer host"
-        elif is_host and not is_headless:
-            state_msg = "Running: Client and GameServer"
-        else:
-            state_msg = "Running Client"
-            
-        self.game_running = True
+        # update_discord_rpc_state will automatically check game_process and host_process
+        self.update_discord_rpc_state()
 
-        if hasattr(self, 'rpc_enabled_var') and self.rpc_enabled_var.get():
-            display_name = self.host_username_var.get() if is_host else self.username_var.get()
-            
-            # Fetch Build and CL
-            build_ver, cl_ver = self.get_game_version(exe_path)
-            large_text = "Project Reboot"
-            if build_ver != "Unknown":
-                large_text = f"Build: {build_ver} | CL: {cl_ver}"
-                
-            self.discord.update_state(
-                state=state_msg,
-                details=f"Logged in as {display_name}",
-                large_image="fortnitelogo",
-                small_image="rebootlogo",
-                small_text="Reboot.py",
-                large_text=large_text
-            )
-            
-        threading.Thread(target=self.monitor_process, args=(proc, is_host,), daemon=True).start()
+        threading.Thread(
+            target=self.monitor_process,
+            args=(proc, is_host, major_version, paused_pids),
+            daemon=True
+        ).start()
 
-    def monitor_process(self, proc, is_host):
+    def monitor_process(self, proc, is_host, major_version=0, paused_pids=None):
         target_pid = proc.pid
-        
-        # 1. IMMEDIATE: Inject Auth right away
-        dll_auth = self.dll_auth_var.get()
-        if dll_auth and os.path.exists(dll_auth):
-            if self.python_injector(target_pid, dll_auth):
-                print(f"[+] Early Injection: {os.path.basename(dll_auth)} injected successfully.")
-            else:
-                print(f"[-] Early Injection failed for {os.path.basename(dll_auth)}.")
+        paused_pids = paused_pids or []
 
-        # 2. LOG WATCHER: Wait for login success before injecting late DLLs (MemoryLeak, Console, Server)
-        logged_in = False
-        
+        dll_auth    = self.dll_auth_var.get()
+        dll_server  = self.dll_server_var.get()
+        dll_memory  = self.dll_memory_var.get()
+        dll_console = self.dll_console_var.get()
+
+        # 1. IMMEDIATE: inject auth DLL right after the process starts
+        if dll_auth and os.path.exists(dll_auth):
+            ok = self.python_injector(target_pid, dll_auth)
+            print(f"[+] Auth inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_auth)})")
+            # Fire the game-running RPC the moment we have a live PID + auth DLL in
+            self.after(0, self.update_discord_rpc_state)
+
+        # 2. LOG WATCHER — mirrors handleGameOutput() in Dart
+        logged_in  = False
+        match_over = False
+
         try:
             for line in iter(proc.stdout.readline, ''):
                 if not line:
                     break
-                
-                print("[UE4] " + line.strip())
+                stripped = line.strip()
+                if stripped:
+                    print("[FN] " + stripped)
 
-                # In Dart, they checked if the line specifically contained ALL keywords to know if it logged in
-                if not logged_in and ("[UOnlineAccountCommon::ContinueLoggingIn]" in line and "(Completed)" in line):
+                # --- Graceful shutdown ---
+                if _SHUTDOWN_LINE in line:
+                    print("[*] Detected graceful shutdown.")
+                    break
+
+                # --- Corrupted build / crash ---
+                if any(e in line for e in _CORRUPTED_ERRORS):
+                    print("[-] Corrupted build or crash detected.")
+                    self.after(0, lambda: messagebox.showerror(
+                        "Build Error",
+                        "The game crashed or the build is corrupted.\n"
+                        "Try verifying your game files."))
+                    break
+
+                # --- Cannot connect to backend ---
+                if any(e in line for e in _CONNECT_ERRORS):
+                    print("[-] Backend connection error detected.")
+                    self.after(0, lambda: messagebox.showerror(
+                        "Connection Error",
+                        "The game could not connect to the backend (port 3551).\n"
+                        "Make sure your backend is running before launching."))
+                    break
+
+                # --- Login completed → late injections ---
+                if not logged_in and all(k in line for k in _LOGGED_IN_LINES):
                     logged_in = True
-                    print("\n[+] Fortnite login completed! Initiating late DLL injections...")
+                    print("[+] Login detected — performing late injections...")
 
-                    # Late Inject: Memory Leak patch (Usually for Chapter 1)        
-                    dll_memory = self.dll_memory_var.get()
-                    if dll_memory and os.path.exists(dll_memory):
-                        if self.python_injector(target_pid, dll_memory):
-                            print(f"[+] Late Injection: {os.path.basename(dll_memory)} injected successfully.")
-                        else:
-                            print(f"[-] Late Injection failed for {os.path.basename(dll_memory)}.")
+                    # Memory leak DLL: Chapter 1 only (major < 10), mirrors _isChapterOne()
+                    if major_version < 10 and dll_memory and os.path.exists(dll_memory):
+                        ok = self.python_injector(target_pid, dll_memory)
+                        print(f"[+] Memory inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_memory)})")
 
-                    # Late Inject: Console (Play) or Server (Host)
                     if is_host:
-                        try:
-                            import subprocess
-                            subprocess.run(f"FOR /F \"tokens=5\" %T IN ('netstat -a -n -o ^| findstr :7777') DO TaskKill.exe /PID %T /F", shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                            print("[+] Ensured port 7777 is clear prior to hosting.")
-                        except:
-                            pass
-
-                        dll_server = self.dll_server_var.get()
+                        # Kill whatever is on the game server port before injecting reboot.dll
+                        port_str = self.host_port_var.get().strip()
+                        if port_str.isdigit():
+                            _kill_port(int(port_str))
+                            print(f"[+] Cleared port {port_str} for game server.")
                         if dll_server and os.path.exists(dll_server):
-                            if self.python_injector(target_pid, dll_server):        
-                                print(f"[+] Late Injection: {os.path.basename(dll_server)} injected successfully.")
-                            else:
-                                print(f"[-] Late Injection failed for {os.path.basename(dll_server)}.")
+                            ok = self.python_injector(target_pid, dll_server)
+                            print(f"[+] Server DLL inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_server)})")
                     else:
-                        dll_console = self.dll_console_var.get()
                         if dll_console and os.path.exists(dll_console):
-                            if self.python_injector(target_pid, dll_console):       
-                                print(f"[+] Late Injection: {os.path.basename(dll_console)} injected successfully.")
-                            else:
-                                print(f"[-] Late Injection failed for {os.path.basename(dll_console)}.")
-                                
+                            ok = self.python_injector(target_pid, dll_console)
+                            print(f"[+] Console inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_console)})")
+
+                    # --- LargePakPatch (custom mods) — inject when toggle enabled ---
+                    if self.use_large_pak_var.get():
+                        dll_pak = self.dll_large_pak_var.get()
+                        if dll_pak and os.path.exists(dll_pak):
+                            ok = self.python_injector(target_pid, dll_pak)
+                            print(f"[+] LargePakPatch inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_pak)})")
+                        else:
+                            print("[-] LargePakPatch enabled but DLL not found — skipping.")
+
+                # --- Match ended (host only) ---
+                if is_host and _MATCH_END_LINE in line and not match_over:
+                    match_over = True
+                    print("[*] Match ended (TeamsLeft: 1).")
+                    if self.host_autorun_var.get():
+                        print(f"[*] Auto-restart in {_REBOOT_DELAY_SECS}s...")
+                        time.sleep(_REBOOT_DELAY_SECS)
+                        # Kill current instance then relaunch on the UI thread
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        self.after(0, lambda: self.handle_launch(is_host=True))
+                        return  # monitor thread exits; new one will be created by handle_launch
+                    else:
+                        time.sleep(_REBOOT_DELAY_SECS)
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        break
+
         except Exception as e:
-            print(f"[-] Error parsing log stream: {e}")
+            print(f"[-] Log stream error: {e}")
 
-        # Revert Visuals and Discord RPC to menu state after game exits
-        if is_host:
-            self.host_process = None
-            if hasattr(self, 'host_btn'):
-                self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
-        else:
-            self.game_process = None
-            if hasattr(self, 'launch_btn'):
-                self.launch_btn.configure(text="Play", fg_color="#3b82f6", hover_color="#2563eb")
+        # Wait for the process to actually terminate so UI stays as "Stop Client/Server" 
+        # instead of reverting immediately if the stdout stream closes early.
+        try:
+            proc.wait()
+        except Exception:
+            pass
 
-        # Determine if any game processes are still actively running
-        any_running = False
-        if hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None:
-            any_running = True
-        if hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None:
-            any_running = True
-            
-        if not any_running:
-            self.game_running = False
+        # 3. Cleanup: kill suspended EAC/Launcher processes
+        for pid in paused_pids:
+            try:
+                os.kill(pid, 9)
+                print(f"[+] Killed suspended process pid={pid}")
+            except Exception:
+                pass
+
+        # 4. Revert UI
+        def _revert():
+            if is_host:
+                self.host_process = None
+                if hasattr(self, 'host_btn'):
+                    self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
+            else:
+                self.game_process = None
+                if hasattr(self, 'launch_btn'):
+                    self.launch_btn.configure(text="Play", fg_color="#3b82f6", hover_color="#2563eb")
+
+            any_running = (
+                (hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None) or
+                (hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None)
+            )
+            if not any_running:
+                self.game_running = False
+                
             self.after(500, self.update_discord_rpc_state)
+
+        self.after(0, _revert)
             
 if __name__ == "__main__":
     app = RebootLauncherApp()
