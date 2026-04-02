@@ -169,7 +169,10 @@ class SettingTile(ctk.CTkFrame):
              ent.pack(side="right", fill="x", expand=True, padx=(20, 20))
 
 # --- REBOOT CONSTANTS (mirrors game_constants.dart) ---
+# Older builds (Ch1-Ch3) emit ContinueLoggingIn+(Completed) on the same line.
+# Newer builds (Ch4+, S20+) emit "LogOnline: Region " after login completes.
 _LOGGED_IN_LINES   = ["[UOnlineAccountCommon::ContinueLoggingIn]", "(Completed)"]
+_LOGGED_IN_REGION  = "LogOnline: Region "
 _SHUTDOWN_LINE     = "FOnlineSubsystemGoogleCommon::Shutdown()"
 _CORRUPTED_ERRORS  = ["Critical error", "when 0 bytes remain", "Pak chunk signature", "LogWindows:Error: Fatal error!"]
 _CONNECT_ERRORS    = ["port 3551 failed: Connection refused", "Unable to login to Fortnite servers", "UOnlineAccountCommon::ForceLogout"]
@@ -196,10 +199,15 @@ _RPC_MAJOR = {
     1:  "season1_to_season4",   2:  "season1_to_season4",
     3:  "season1_to_season4",   4:  "season1_to_season4",
     5:  "season5",
+    12: "ch2s2",
     13: "chap2s3",
     14: "chap2s4",
     17: "chap2s7",
+    18: "ch2s8",        # all Ch2S8 builds (18.30 and 18.40 have exact assets above)
     20: "ch3s2_20xx",   # all other Ch3S2 builds (not 20.20)
+    21: "ch3s3",        # all Ch3S3 builds (21.00 and 21.40 have exact assets above)
+    22: "ch3s4",        # all Ch3S4 builds (22.00, 22.30, 22.40 have exact assets above)
+    23: "ch4s1",        # all Ch4S1 builds (23.10 has exact asset above)
     24: "ch4s2",        # all other Ch4S2 builds (not 24.30)
     25: "ch4s3",        # all other Ch4S3 builds (not 25.20)
     26: "ch4s4",
@@ -404,7 +412,7 @@ def _start_proxy(target_url):
     return srv
 
 
-def _download_dll(name, dest_path, zip_url=None):
+def _download_dll(name, dest_path, zip_url=None, direct_url=None):
     """Download a DLL from GitHub (mirrors DLL auto-download in Dart)."""
     if os.path.exists(dest_path):
         return True
@@ -425,6 +433,9 @@ def _download_dll(name, dest_path, zip_url=None):
                             os.rename(extracted, dest_path)
                         break
             os.remove(tmp)
+        elif direct_url:
+            print(f"[*] Downloading {name}...")
+            urllib.request.urlretrieve(direct_url, dest_path)
         else:
             url = _DLL_BASE_URL + name
             print(f"[*] Downloading {name}...")
@@ -636,6 +647,30 @@ class RebootLauncherApp(ctk.CTk):
                 with open(CONFIG_PATH, "r") as f:
                     self.settings.update(json.load(f))
             except Exception as e: print('RPC Error:', e)
+        # Migrate old build name formats to "Fortnite vX.XX"
+        changed = False
+        for b in self.settings.get("builds", []):
+            name = b.get("name", "")
+            # Already correct format
+            if name.startswith("Fortnite v") and not name.startswith("Fortnite ("):
+                continue
+            # Try to extract version from old "Build X.XX" or "Build X.XX-CL-XXXXX" names
+            m = re.search(r'(\d+\.\d+(?:\.\d+)?)', name)
+            if m:
+                b["name"] = f"Fortnite v{m.group(1)}"
+                changed = True
+            elif b.get("exe"):
+                # Re-derive from exe path
+                bv, _ = self.get_game_version(b["exe"])
+                if bv != "Unknown":
+                    b["name"] = f"Fortnite v{bv}"
+                    changed = True
+        if changed:
+            try:
+                with open(CONFIG_PATH, "w") as f:
+                    json.dump(self.settings, f, indent=4)
+            except Exception:
+                pass
 
     def save_config(self):
         self.settings["path"] = self.path_var.get()
@@ -736,11 +771,21 @@ class RebootLauncherApp(ctk.CTk):
         self.pages_frame.grid_columnconfigure(0, weight=1)
 
         self.pages = {}
-        # We loop and create the main pages
-        for name in ["Play", "Download", "ClientOptions", "Host", "HostInformation", "HostOptions", "HostShare", "Backend", "Info", "Settings", "AccountSettings", "InternalFiles"]:
-            f = ctk.CTkScrollableFrame(self.pages_frame, fg_color="transparent")
+        self._pages_built = set()
+        self._all_page_names = ["Play", "Download", "ClientOptions", "Host", "HostInformation", "HostOptions", "HostShare", "Backend", "Info", "Settings", "AccountSettings", "InternalFiles"]
+        # Only pages with lots of content get a scrollbar — everything else is a plain frame
+        _scrollable = {"Info", "Settings", "InternalFiles"}
+        for name in self._all_page_names:
+            if name in _scrollable:
+                f = ctk.CTkScrollableFrame(
+                    self.pages_frame,
+                    fg_color="transparent",
+                    scrollbar_button_color="#2d2d2d",
+                    scrollbar_button_hover_color="#3d3d3d",
+                )
+            else:
+                f = ctk.CTkFrame(self.pages_frame, fg_color="transparent")
             self.pages[name] = f
-            getattr(self, f"build_{name.lower()}_page")(f)
 
     def _sync_button_states(self):
         """Re-apply Play/Host button visuals to match actual running process state.
@@ -759,6 +804,11 @@ class RebootLauncherApp(ctk.CTk):
                 self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
 
     def show_page(self, name):
+        # Lazy-build: only construct page content on first visit
+        if name not in self._pages_built:
+            getattr(self, f"build_{name.lower()}_page")(self.pages[name])
+            self._pages_built.add(name)
+
         for page in self.pages.values():
             page.grid_forget()
 
@@ -1135,31 +1185,74 @@ class RebootLauncherApp(ctk.CTk):
         self.update_backend_action_text()
 
     def build_info_page(self, parent):
-        ctk.CTkLabel(parent, text="Info", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
-        
-        info_frame = ctk.CTkFrame(parent, fg_color="#1E1E1E", corner_radius=10)
-        info_frame.pack(fill="x", pady=5)
-        
-        # Banner/Header area inside the info frame
-        ctk.CTkLabel(info_frame, text="Reboot.py", font=("Segoe UI", 24, "bold"), text_color="#3b82f6").pack(pady=(20, 5))
-        ctk.CTkLabel(info_frame, text="The most lightweight way to play legacy Fortnite.", font=("Segoe UI", 12), text_color="#a1a1aa").pack(pady=(0, 20))
-        
         import webbrowser
-        def open_discord(): webbrowser.open("https://discord.gg/rebootmp")
-        def open_github(): webbrowser.open("https://github.com/Project-Reboot")
-        
-        btn_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-        btn_frame.pack(pady=(0, 20))
-        
-        ctk.CTkButton(btn_frame, text="Discord", fg_color="#5865F2", hover_color="#4752C4", width=120, command=open_discord).pack(side="left", padx=10)
-        ctk.CTkButton(btn_frame, text="GitHub", fg_color="#333333", hover_color="#222222", width=120, command=open_github).pack(side="left", padx=10)
+        ctk.CTkLabel(parent, text="Info", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
 
-        # Tiles matching Reboot aesthetic
-        SettingTile(parent, "Project Reboot Python Clone", "A completely native 1:1 recreation of the original Reboot Launcher.", button_text="Read")
-        SettingTile(parent, "Version", "Release - v1.0", button_text="Check for updates")
-        SettingTile(parent, "Special Thanks", "To the amazing community of developers enabling legacy gameplay.", button_text="Contributors")
-        
-        ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games.\npowered by CustomTkinter.", text_color="#52525b", font=("Segoe UI", 11)).pack(side="bottom", pady=40)
+        # --- Hero banner ---
+        hero = ctk.CTkFrame(parent, fg_color="#111827", corner_radius=10)
+        hero.pack(fill="x", pady=(0, 16))
+        ctk.CTkLabel(hero, text="Reboot.py", font=("Segoe UI", 26, "bold"), text_color="#3b82f6").pack(pady=(22, 2))
+        ctk.CTkLabel(hero, text="v2.0  ·  The most lightweight way to play legacy Fortnite", font=("Segoe UI", 12), text_color="#71717a").pack()
+        btn_row = ctk.CTkFrame(hero, fg_color="transparent")
+        btn_row.pack(pady=(14, 22))
+        ctk.CTkButton(btn_row, text="Discord", fg_color="#5865F2", hover_color="#4752C4", width=110, height=32, corner_radius=6,
+                      command=lambda: webbrowser.open("https://discord.gg/rebootmp")).pack(side="left", padx=8)
+        ctk.CTkButton(btn_row, text="GitHub", fg_color="#24292e", hover_color="#1a1f24", width=110, height=32, corner_radius=6,
+                      command=lambda: webbrowser.open("https://github.com/Ducki67/Project-Reboot.py")).pack(side="left", padx=8)
+
+        # --- Changelog ---
+        ctk.CTkLabel(parent, text="Changelog", font=("Segoe UI", 18, "bold"), text_color="#f4f4f5", anchor="w").pack(fill="x", pady=(8, 6))
+
+        changelog = [
+            ("v2.0 — Current", "#3b82f6", [
+                "Discord Rich Presence — shows build version, CL, and season artwork",
+                "Season-aware RPC images for every chapter (Ch1 through Ch5S3)",
+                "Build names now display as 'Fortnite vXX.YY' with correct version detection",
+                "Version detection fixed for UE5 builds (S20+) via ++Fortnite+Release pattern",
+                "Path-based version fallback — reads version from folder name if binary scan fails",
+                "LargePakPatch DLL support (auto-download, gated to builds >5.10 and <14.40)",
+                "Login trigger fixed for S20+ builds using 'LogOnline: Region' line",
+                "major_version now parsed from Fortnite build string, not UE engine version",
+                "Build list auto-migrates old 'Build X.XX-CL-...' names on startup",
+                "CL mapping loaded from cl_mapping.json for accurate version display",
+                "S20-aware server DLL selection (reboot.dll vs rebootS20.dll)",
+                "LargePakPatch fixed to use direct download instead of treating URL as zip",
+            ]),
+            ("v1.0 — Initial Release", "#71717a", [
+                "Native Python launcher — no Dart/Flutter dependency",
+                "DLL injection: auth, console, memory, game server",
+                "EAC + FortniteLauncher.exe suspended on startup",
+                "Embedded / Local / Remote backend support with proxy on port 3551",
+                "Build downloader with aria2c and urllib fallback",
+                "Headless server mode with binary byte-patch",
+                "Discord RPC base integration",
+                "Auto-download missing DLLs from nightly builds",
+            ]),
+        ]
+
+        for version, accent, items in changelog:
+            card = ctk.CTkFrame(parent, fg_color="#181818", corner_radius=8)
+            card.pack(fill="x", pady=5)
+            header_row = ctk.CTkFrame(card, fg_color="transparent")
+            header_row.pack(fill="x", padx=16, pady=(14, 6))
+            # Accent dot
+            dot = ctk.CTkFrame(header_row, fg_color=accent, width=10, height=10, corner_radius=5)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(header_row, text=version, font=("Segoe UI", 14, "bold"), text_color="#f4f4f5").pack(side="left")
+            # Divider
+            ctk.CTkFrame(card, fg_color="#2d2d2d", height=1).pack(fill="x", padx=16)
+            # Items
+            items_frame = ctk.CTkFrame(card, fg_color="transparent")
+            items_frame.pack(fill="x", padx=20, pady=(8, 14))
+            for item in items:
+                row = ctk.CTkFrame(items_frame, fg_color="transparent")
+                row.pack(fill="x", pady=2)
+                ctk.CTkLabel(row, text="·", font=("Segoe UI", 13), text_color=accent, width=14, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=item, font=("Segoe UI", 12), text_color="#a1a1aa", anchor="w", wraplength=700, justify="left").pack(side="left", fill="x")
+
+        ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games  ·  powered by CustomTkinter",
+                     text_color="#3f3f46", font=("Segoe UI", 11)).pack(pady=30)
 
     def build_settings_page(self, parent):
         ctk.CTkLabel(parent, text="Settings", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
@@ -1237,7 +1330,10 @@ class RebootLauncherApp(ctk.CTk):
                 return
                 
             build_name, cl = self.get_game_version(exe)
-            display_name = f"Build {build_name}" if build_name != "Unknown" else os.path.basename(f)
+            if build_name != "Unknown":
+                display_name = f"Fortnite v{build_name}"
+            else:
+                display_name = f"Fortnite ({os.path.basename(f)})"
             
             # Check if already exists
             for b in self.builds:
@@ -1455,9 +1551,10 @@ class RebootLauncherApp(ctk.CTk):
         for scan_path in filter(None, [crc_exe, exe_path]):
             try:
                 with open(scan_path, 'rb') as f:
-                    raw = f.read(4_000_000)
+                    raw = f.read(8_000_000)  # 8 MB — covers larger UE5 binaries
                 # Try UTF-16LE first (the property store stores it wide)
                 for data in (raw.replace(b'\x00', b''), raw):
+                    # Pattern 1: UE4 format — "5.4.0-29739262+++Fortnite+Release-27.11"
                     m = re.search(
                         rb'\d+\.\d+\.\d+-(\d+)\+\+\+Fortnite\+Release-([a-zA-Z0-9\.]+)',
                         data
@@ -1465,6 +1562,17 @@ class RebootLauncherApp(ctk.CTk):
                     if m:
                         cl    = m.group(1).decode('utf-8', errors='ignore')
                         build = m.group(2).decode('utf-8', errors='ignore')
+                        mapped = self.get_cl_mapping(cl)
+                        if mapped: build = mapped
+                        return build, cl
+                    # Pattern 2: UE5 buildversion format — "++Fortnite+Release-27.11-CL-29739262"
+                    m2 = re.search(
+                        rb'\+\+Fortnite\+Release-(\d+\.\d+)-CL-(\d+)',
+                        data
+                    )
+                    if m2:
+                        build = m2.group(1).decode('utf-8', errors='ignore')
+                        cl    = m2.group(2).decode('utf-8', errors='ignore')
                         mapped = self.get_cl_mapping(cl)
                         if mapped: build = mapped
                         return build, cl
@@ -1484,6 +1592,20 @@ class RebootLauncherApp(ctk.CTk):
             if mapped: build = mapped
         except Exception:
             pass
+
+        # --- Path-based fallback: parse version from directory names in the exe path ---
+        # e.g. "27.11-CL-29739262" or "Fortnite 8.51" or "Fortnite v3.6"
+        if build == "Unknown":
+            for part in reversed(exe_path.replace('\\', '/').split('/')):
+                # Match "27.11-CL-29739262", "23.50", "8.51", "v3.6", "1.7.2" etc.
+                m = re.search(r'(?:^|v|Fortnite[\s_]?v?)(\d+\.\d+(?:\.\d+)?)', part, re.IGNORECASE)
+                if m:
+                    build = m.group(1)
+                    # Also try to extract CL from path part
+                    cl_m = re.search(r'CL[-_](\d+)', part)
+                    if cl_m and cl == "Unknown":
+                        cl = cl_m.group(1)
+                    break
 
         return build, cl
 
@@ -1555,25 +1677,25 @@ class RebootLauncherApp(ctk.CTk):
             _write_matchmaker_config(self.base_dir, "127.0.0.1", game_port or "7777")
 
         # --- Detect game major version + cache build info for RPC ---
-        major_version = 0
-        try:
-            import win32api
-            info = win32api.GetFileVersionInfo(exe_path, '\\')
-            major_version = info['FileVersionMS'] >> 16
-        except Exception:
-            pass
-        # Full version scan — cached on self so update_discord_rpc_state never re-scans
+        # Parse from the Fortnite build string (e.g. "27.11" → 27), NOT from
+        # FileVersionMS which returns the UE engine major (e.g. 5 for UE5 builds).
         _bv, _cl = self.get_game_version(exe_path)
         self._rpc_build_ver = _bv
         self._rpc_cl_ver    = _cl
+        major_version = 0
+        try:
+            major_version = int(_bv.split('.')[0])
+        except Exception:
+            pass
+        print(f"[*] Version detected: build={_bv}  CL={_cl}  major_version={major_version}  rpc_image={_rpc_image(_bv)}")
 
         # --- Auto-download missing DLLs ---
         dll_dir = os.path.join(self.base_dir, "dlls")
-        def _ensure(var, name, zip_url=None):
+        def _ensure(var, name, zip_url=None, direct_url=None):
             p = var.get()
             if not p or not os.path.exists(p):
                 default = os.path.join(dll_dir, name)
-                _download_dll(name, default, zip_url)
+                _download_dll(name, default, zip_url, direct_url)
                 if os.path.exists(default):
                     var.set(default)
                     self.save_config()
@@ -1585,9 +1707,9 @@ class RebootLauncherApp(ctk.CTk):
             _ensure(self.dll_server_var, "rebootS20.dll", _REBOOT_S20_DLL_URL)
         else:
             _ensure(self.dll_server_var, "reboot.dll", _REBOOT_DLL_URL)
-        # LargePakPatch — auto-download if toggle on and file missing
+        # LargePakPatch — auto-download if toggle on and file missing (direct DLL, not a zip)
         if self.use_large_pak_var.get():
-            _ensure(self.dll_large_pak_var, "LargePakPatch.dll", _LARGE_PAK_URL)
+            _ensure(self.dll_large_pak_var, "LargePakPatch.dll", direct_url=_LARGE_PAK_URL)
 
         # --- Build auth args using Dart-identical logic ---
         if is_host:
@@ -1684,11 +1806,11 @@ class RebootLauncherApp(ctk.CTk):
 
         threading.Thread(
             target=self.monitor_process,
-            args=(proc, is_host, major_version, paused_pids),
+            args=(proc, is_host, major_version, paused_pids, _bv),
             daemon=True
         ).start()
 
-    def monitor_process(self, proc, is_host, major_version=0, paused_pids=None):
+    def monitor_process(self, proc, is_host, major_version=0, paused_pids=None, build_ver="Unknown"):
         target_pid = proc.pid
         paused_pids = paused_pids or []
 
@@ -1740,7 +1862,9 @@ class RebootLauncherApp(ctk.CTk):
                     break
 
                 # --- Login completed → late injections ---
-                if not logged_in and all(k in line for k in _LOGGED_IN_LINES):
+                # Older builds: ContinueLoggingIn+(Completed) on same line
+                # Newer builds (Ch4+): "LogOnline: Region " after login
+                if not logged_in and (all(k in line for k in _LOGGED_IN_LINES) or _LOGGED_IN_REGION in line):
                     logged_in = True
                     print("[+] Login detected — performing late injections...")
 
@@ -1763,14 +1887,22 @@ class RebootLauncherApp(ctk.CTk):
                             ok = self.python_injector(target_pid, dll_console)
                             print(f"[+] Console inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_console)})")
 
-                    # --- LargePakPatch (custom mods) — inject when toggle enabled ---
+                    # --- LargePakPatch (custom mods) — only supported on builds >5.10 and <14.40 ---
                     if self.use_large_pak_var.get():
-                        dll_pak = self.dll_large_pak_var.get()
-                        if dll_pak and os.path.exists(dll_pak):
-                            ok = self.python_injector(target_pid, dll_pak)
-                            print(f"[+] LargePakPatch inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_pak)})")
+                        try:
+                            parts = build_ver.split('.')
+                            _pak_ver = float(f"{parts[0]}.{parts[1]}") if len(parts) >= 2 else float(parts[0])
+                        except Exception:
+                            _pak_ver = 0.0
+                        if 5.10 < _pak_ver < 14.40:
+                            dll_pak = self.dll_large_pak_var.get()
+                            if dll_pak and os.path.exists(dll_pak):
+                                ok = self.python_injector(target_pid, dll_pak)
+                                print(f"[+] LargePakPatch inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_pak)})")
+                            else:
+                                print("[-] LargePakPatch enabled but DLL not found — skipping.")
                         else:
-                            print("[-] LargePakPatch enabled but DLL not found — skipping.")
+                            print(f"[*] LargePakPatch skipped — only supported on builds >5.10 and <14.40 (this build: {build_ver})")
 
                 # --- Match ended (host only) ---
                 if is_host and _MATCH_END_LINE in line and not match_over:

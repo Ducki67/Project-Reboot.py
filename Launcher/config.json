@@ -5,31 +5,15 @@
     "host_username": "PythonServer",
     "host_email": "server@projectreboot.py",
     "host_account_password": "HostPassword",
-    "path": "Build 26.30-CL-28688692",
+    "path": "No builds added",
     "builds": [
         {
-            "name": "Build 1.7.2",
-            "exe": "D:\\FortniteBuilds\\Ch1\\1.7.2\\Build 1.7.2\\Build 1.7.2\\Fortnite\\Fortnite1\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
-        },
-        {
-            "name": "Build 3.60",
-            "exe": "D:\\FortniteBuilds\\Ch1\\Fortnite v3.6\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
-        },
-        {
-            "name": "Build 23.50-CL-24441668",
-            "exe": "D:\\FortniteBuilds\\Ch4\\23.50\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
-        },
-        {
-            "name": "Build 8.51-CL-6165369",
-            "exe": "D:\\FortniteBuilds\\Ch1\\Fortnite 8.51\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
-        },
-        {
-            "name": "Build 26.30-CL-28688692",
-            "exe": "D:\\FortniteBuilds\\Ch4\\26.30-CL-28688692\\26.30-CL-28688692\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
+            "name": "Fortnite v27.11",
+            "exe": "D:\\FortniteBuilds\\Ch4\\27.11-CL-29739262\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe"
         }
     ],
     "dll_console": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/ErbiumClient.dll",
-    "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/Tellurium 3551.dll",
+    "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/Tellurium push 3551.dll",
     "dll_memory": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/memory.dll",
     "dll_server": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/Erbium.dll",
     "backend_path": "C:/Users/sando/Documents/GitHub/Nexa-3551/start.bat",
