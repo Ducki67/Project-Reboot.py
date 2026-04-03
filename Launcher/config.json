@@ -5,7 +5,7 @@
     "host_username": "PythonServer",
     "host_email": "server@projectreboot.py",
     "host_account_password": "HostPassword",
-    "path": "No builds added",
+    "path": "Fortnite v27.11",
     "builds": [
         {
             "name": "Fortnite v27.11",
@@ -16,6 +16,9 @@
     "dll_auth": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/Tellurium push 3551.dll",
     "dll_memory": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/memory.dll",
     "dll_server": "C:/Users/sando/Downloads/Erbium-main/Erbium-main/x64/Release/Erbium.dll",
+    "dll_auth_choice": "Cobalt",
+    "dll_console_choice": "Console",
+    "dll_server_choice": "Reboot",
     "backend_path": "C:/Users/sando/Documents/GitHub/Nexa-3551/start.bat",
     "backend_autostart": false,
     "host_port": "7777",
@@ -30,6 +33,7 @@
     "rpc_enabled": true,
     "dll_large_pak": "C:/Users/sando/Documents/GitHub/Project-Reboot.py/Launcher/dlls/LargePakPatch.dll",
     "use_large_pak": false,
+    "theme": "Dark",
     "is_host": 1,
     "game_path": "D:/FortniteBuilds/Ch1/2.5.0/2.5/FortniteGame/Binaries/Win64/FortniteClient-Win64-Shipping.exe",
     "dll_path": "",

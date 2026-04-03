@@ -54,9 +54,12 @@ DEFAULT_CONFIG = {
     "path": "",
     "builds": [],
     "dll_console": os.path.join(os.getcwd(), "dlls", "console.dll"),
-    "dll_auth": os.path.join(os.getcwd(), "dlls", "Starfall.dll"),
+    "dll_auth": os.path.join(os.getcwd(), "dlls", "cobalt.dll"),
     "dll_memory": os.path.join(os.getcwd(), "dlls", "memory.dll"),
     "dll_server": os.path.join(os.getcwd(), "dlls", "reboot.dll"),
+    "dll_auth_choice": "Cobalt",
+    "dll_console_choice": "Console",
+    "dll_server_choice": "Reboot",
     "backend_path": "assets/backend/lawinserver.exe",
     "backend_autostart": False,
     "host_port": "7777",
@@ -70,7 +73,8 @@ DEFAULT_CONFIG = {
     "launch_args": "-epicapp=Fortnite -epicenv=Prod -epiclocale=en-us -epicportal -skippatchcheck -nobe -fromfl=eac -fltoken=3db3ba5dcbd2e16703f3978d -caldera=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoiYmU5ZGE1YzJmYmVhNDQwN2IyZjQwZWJhYWQ4NTlhZDQiLCJnZW5lcmF0ZWQiOjE2Mzg3MTcyNzgsImNhbGRlcmFHdWlkIjoiMzgxMGI4NjMtMmE2NS00NDU3LTliNTgtNGRhYjNiNDgyYTg2IiwiYWNQcm92aWRlciI6IkVhc3lBbnRpQ2hlYXQiLCJub3RlcyI6IiIsImZhbGxiYWNrIjpmYWxzZX0.VAWQB67RTxhiWOxx7DBjnzDnXyyEnX7OljJm-j2d88G_WgwQ9wrE6lwMEHZHjBd1ISJdUO1UVUqkfLdU5nofBQ",
     "rpc_enabled": True,
     "dll_large_pak": "",
-    "use_large_pak": False
+    "use_large_pak": False,
+    "theme": "Dark"
 }
 
 class DiscordManager:
@@ -125,13 +129,12 @@ class DiscordManager:
             except Exception as e: print('RPC Error:', e)
 
 # --- UI TILE COMPONENT ---
-# Matches Fluent UI "SettingTile" look exactly
 class SettingTile(ctk.CTkFrame):
     def __init__(self, parent, title, subtitle, button_text=None, button_command=None, show_entry=False, entry_var=None, is_subpage=False, is_switch=False, switch_var=None, is_option=False, option_var=None, options_list=None, button_text_var=None):
         super().__init__(parent, fg_color="transparent")
         self.pack(fill="x", pady=6)
 
-        container = ctk.CTkFrame(self, fg_color="#181818", corner_radius=5, height=78)
+        container = ctk.CTkFrame(self, fg_color=_T["tile"], corner_radius=5, height=78)
         container.pack(fill="x")
         container.pack_propagate(False)
 
@@ -145,19 +148,19 @@ class SettingTile(ctk.CTkFrame):
             switch = ctk.CTkSwitch(container, text="", variable=switch_var, onvalue=True, offvalue=False, progress_color="#3b82f6", button_color="white", button_hover_color="#e4e4e7")
             switch.pack(side="right", padx=(0, 20))
         elif is_option and options_list:
-            opt = ctk.CTkOptionMenu(container, variable=option_var, values=options_list, fg_color="#2d2d2d", button_color="#3d3d3d", button_hover_color="#4d4d4d", dropdown_fg_color="#2d2d2d", width=120)
+            opt = ctk.CTkOptionMenu(container, variable=option_var, values=options_list, fg_color=_T["muted"], button_color=_T["muted_hover"], button_hover_color=_T["muted_deep"], dropdown_fg_color=_T["muted"], width=120)
             opt.pack(side="right", padx=(0, 20))
         elif button_text or button_text_var:
             btn_width = 120
-            btn_color = "#2d2d2d"
-            btn_hover = "#3d3d3d"
+            btn_color = _T["muted"]
+            btn_hover = _T["muted_hover"]
             if button_text == "Toggle":
-                btn_color = "#3b82f6"
-                btn_hover = "#2563eb"
+                btn_color = _T["accent"]
+                btn_hover = _T["accent_hover"]
             if is_subpage:
                 btn_width = 40
                 btn_color = "transparent"
-                btn_hover = "#2d2d2d"
+                btn_hover = _T["nav_active"]
 
             btn = ctk.CTkButton(container, text=button_text if not button_text_var else button_text_var.get(), fg_color=btn_color, hover_color=btn_hover, text_color="white", font=("Segoe UI", 13, "bold"), width=btn_width, height=34, corner_radius=4, command=button_command)
             if button_text_var:
@@ -165,11 +168,10 @@ class SettingTile(ctk.CTkFrame):
             btn.pack(side="right", padx=(0, 20))
 
         if show_entry and entry_var is not None:
-             ent = ctk.CTkEntry(container, fg_color="#121212", border_width=1, border_color="#333333", text_color="#ffffff", font=("Segoe UI", 13), height=34, corner_radius=4, textvariable=entry_var)
+             ent = ctk.CTkEntry(container, fg_color=_T["tile_deep"], border_width=1, border_color=_T["border"], text_color="#ffffff", font=("Segoe UI", 13), height=34, corner_radius=4, textvariable=entry_var)
              ent.pack(side="right", fill="x", expand=True, padx=(20, 20))
 
-# --- REBOOT CONSTANTS (mirrors game_constants.dart) ---
-# Older builds (Ch1-Ch3) emit ContinueLoggingIn+(Completed) on the same line.
+# --- REBOOT CONSTANTS ---
 # Newer builds (Ch4+, S20+) emit "LogOnline: Region " after login completes.
 _LOGGED_IN_LINES   = ["[UOnlineAccountCommon::ContinueLoggingIn]", "(Completed)"]
 _LOGGED_IN_REGION  = "LogOnline: Region "
@@ -181,7 +183,6 @@ _LAUNCHER_EXE      = "FortniteLauncher.exe"
 _EAC_EXE           = "FortniteClient-Win64-Shipping_EAC.exe"
 _REBOOT_DELAY_SECS = 10
 
-# Discord RPC image assets — exact build version matches (highest priority)
 _RPC_EXACT = {
     "18.30": "ch2s8_1830",   "18.40": "ch2s8_1840",
     "20.20": "ch3s2_2020",
@@ -194,7 +195,6 @@ _RPC_EXACT = {
     "29.40": "ch5s2_2940",
 }
 
-# Major-version fallback — covers all builds of a season that lack their own exact asset
 _RPC_MAJOR = {
     1:  "season1_to_season4",   2:  "season1_to_season4",
     3:  "season1_to_season4",   4:  "season1_to_season4",
@@ -221,43 +221,112 @@ def _rpc_image(build_ver: str) -> str:
     """Return the best-matching Discord RPC asset key for a given build version string."""
     if not build_ver or build_ver == "Unknown":
         return "fortnite_noseason"
-    # Strip any trailing "-CL-XXXXXX" junk so lookups always work on clean "X.XX" strings
     clean = re.sub(r'[-_]CL[-_]\d+', '', build_ver).strip().strip('-').strip()
-    # 1 — exact version match (e.g. "23.10" → ch4s1_2310)
     if clean in _RPC_EXACT:
         return _RPC_EXACT[clean]
-    # 2 — major-version season fallback (e.g. major=24 → ch4s2 for any 24.xx)
     try:
         major = int(clean.split('.')[0])
         if major in _RPC_MAJOR:
             return _RPC_MAJOR[major]
     except Exception:
         pass
-    # 3 — no match → generic
     return "fortnite_noseason"
 
-# URLs for DLL auto-download (mirrors game_downloader.dart)
-_DLL_BASE_URL       = "https://github.com/Auties00/reboot_launcher/raw/master/gui/dependencies/dlls/"
-_REBOOT_DLL_URL     = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip"
-_REBOOT_S20_DLL_URL = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/RebootS20.zip"
-_LARGE_PAK_URL      = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
+_DLL_BASE_URL        = "https://github.com/Auties00/reboot_launcher/raw/master/gui/dependencies/dlls/"
+_COBALT_URL          = _DLL_BASE_URL + "cobalt.dll"
+_REBOOT_DLL_URL      = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip" # credits to Milxnor <3
+_ERBIUM_URL          = "https://nightly.link/plooshi/Erbium/workflows/Build/main/Erbium.zip" # credits to plooshi <3
+_ERBIUM_CLIENT_URL   = "https://nightly.link/plooshi/Erbium/workflows/Build/main/ErbiumClient.zip" # credits to plooshi <3
+_LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
 
-# Global proxy server reference so we can shut it down and restart
+_DLL_AUTH_PRESETS = {
+    "Cobalt":              ("cobalt.dll",              None,              _COBALT_URL, False),
+    "Tellurium 3551":      ("tellurium3551.dll",        None,              None,        True),
+    "Tellurium Push 3551": ("tellurium_push3551.dll",   None,              None,        True),
+}
+_DLL_CONSOLE_PRESETS = {
+    "Console":       ("console.dll",     None,              None,              False),
+    "Erbium Client": ("ErbiumClient.dll", _ERBIUM_CLIENT_URL, None,             False),
+}
+_DLL_SERVER_PRESETS = {
+    "Reboot": ("reboot.dll", _REBOOT_DLL_URL, None, False),
+    "Erbium":  ("Erbium.dll", _ERBIUM_URL,     None, False),
+}
+
+_THEMES = {
+    "Dark": {
+        "bg": "#0b0b0b", "sidebar": "#121212", "content": "#0f0f0f",
+        "tile": "#181818", "tile_deep": "#0e0e0e", "border": "#333333",
+        "nav_active": "#1e1e1e", "muted": "#2d2d2d", "muted_hover": "#3d3d3d",
+        "muted_deep": "#4d4d4d", "accent": "#3b82f6", "accent_hover": "#2563eb",
+        "text": "#f4f4f5", "subtext": "#a1a1aa",
+    },
+    "Midnight": {
+        "bg": "#05080f", "sidebar": "#0a0f1c", "content": "#080c18",
+        "tile": "#0f1628", "tile_deep": "#0a0f1c", "border": "#1e3058",
+        "nav_active": "#152040", "muted": "#1e3058", "muted_hover": "#263870",
+        "muted_deep": "#2e4088", "accent": "#60a5fa", "accent_hover": "#3b82f6",
+        "text": "#e2e8ff", "subtext": "#8da8d8",
+    },
+    "Storm": {
+        "bg": "#080612", "sidebar": "#100d1e", "content": "#0c0a18",
+        "tile": "#181428", "tile_deep": "#100d1e", "border": "#3b1f6b",
+        "nav_active": "#241550", "muted": "#2d1f54", "muted_hover": "#3d2a70",
+        "muted_deep": "#4d358c", "accent": "#a855f7", "accent_hover": "#9333ea",
+        "text": "#f0ebff", "subtext": "#b09ad4",
+    },
+    "Chapter 1": {
+        "bg": "#0a0800", "sidebar": "#130f00", "content": "#0e0b00",
+        "tile": "#1c1700", "tile_deep": "#130f00", "border": "#503a00",
+        "nav_active": "#2e2300", "muted": "#352a00", "muted_hover": "#453600",
+        "muted_deep": "#554200", "accent": "#f59e0b", "accent_hover": "#d97706",
+        "text": "#fffbeb", "subtext": "#c9a850",
+    },
+    "Battle Bus": {
+        "bg": "#090900", "sidebar": "#111100", "content": "#0d0d00",
+        "tile": "#1a1900", "tile_deep": "#111100", "border": "#4a4800",
+        "nav_active": "#2c2b00", "muted": "#353400", "muted_hover": "#454300",
+        "muted_deep": "#555200", "accent": "#fbbf24", "accent_hover": "#f59e0b",
+        "text": "#fefce8", "subtext": "#c8b460",
+    },
+    "Tilted Towers": {
+        "bg": "#0e0500", "sidebar": "#180800", "content": "#120600",
+        "tile": "#220e00", "tile_deep": "#180800", "border": "#6b2200",
+        "nav_active": "#3d1200", "muted": "#4d1800", "muted_hover": "#5d2000",
+        "muted_deep": "#6d2800", "accent": "#f97316", "accent_hover": "#ea580c",
+        "text": "#fff7ed", "subtext": "#d08860",
+    },
+    "Neo Tilted": {
+        "bg": "#001414", "sidebar": "#001c1c", "content": "#001818",
+        "tile": "#002424", "tile_deep": "#001c1c", "border": "#006666",
+        "nav_active": "#003838", "muted": "#003d3d", "muted_hover": "#004d4d",
+        "muted_deep": "#005d5d", "accent": "#06b6d4", "accent_hover": "#0891b2",
+        "text": "#ecfeff", "subtext": "#67c8d8",
+    },
+    "Zero Point": {
+        "bg": "#020a12", "sidebar": "#050f1a", "content": "#040d16",
+        "tile": "#091624", "tile_deep": "#050f1a", "border": "#1a4a70",
+        "nav_active": "#0f2a44", "muted": "#163550", "muted_hover": "#1e4060",
+        "muted_deep": "#264b70", "accent": "#22d3ee", "accent_hover": "#06b6d4",
+        "text": "#e0f8ff", "subtext": "#6bbad4",
+    },
+}
+_T = dict(_THEMES["Dark"])
+
 _proxy_server = None
 
 
 def _parse_username(username):
-    """Strip non-alphanumeric chars (mirrors Dart _parseUsername)."""
+    """Strip non-alphanumeric chars."""
     return re.sub(r'[^a-zA-Z0-9]', '', username) or "Player"
 
 
 def _build_args(username, password, host, headless, custom_args=""):
-    """Build launch args with case-insensitive deduplication (mirrors createRebootArgs)."""
+    """Build launch args with case-insensitive deduplication."""
     if not password:
         username = f"{_parse_username(username)}@projectreboot.dev"
     password = password if password else "Rebooted"
 
-    # Use ordered dict with case-insensitive key dedup
     args = {}
     def _set(key, val=""):
         args[key.upper()] = (key, val)
@@ -281,7 +350,6 @@ def _build_args(username, password, host, headless, custom_args=""):
         if headless:
             _set("-nullrhi")
 
-    # Merge custom args (user overrides win, case-insensitive)
     for token in custom_args.split():
         sep = token.find("=")
         if sep != -1:
@@ -297,7 +365,7 @@ def _build_args(username, password, host, headless, custom_args=""):
 
 
 def _kill_port(port):
-    """Kill any process listening on the given TCP port (mirrors killProcessByPort)."""
+    """Kill any process listening on the given TCP port."""
     try:
         r = subprocess.run(['netstat', '-ano', '-p', 'TCP'], capture_output=True, text=True)
         for line in r.stdout.splitlines():
@@ -311,7 +379,7 @@ def _kill_port(port):
 
 
 def _nt_suspend_process(pid):
-    """Atomically suspend every thread in a process via NtSuspendProcess (mirrors Dart suspend())."""
+    """Atomically suspend every thread in a process via NtSuspendProcess)."""
     PROCESS_SUSPEND_RESUME = 0x0800
     h = k32.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
     if not h:
@@ -413,7 +481,7 @@ def _start_proxy(target_url):
 
 
 def _download_dll(name, dest_path, zip_url=None, direct_url=None):
-    """Download a DLL from GitHub (mirrors DLL auto-download in Dart)."""
+    """Download a DLL from GitHub."""
     if os.path.exists(dest_path):
         return True
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -453,7 +521,6 @@ class RebootLauncherApp(ctk.CTk):
         self.withdraw()  # Hide the window while initializing to prevent "piece-by-piece" loading
         self.title("Reboot.py")
         
-        # When compiled, look for assets next to the .exe. When running from Python, look next to main.py
         if getattr(sys, 'frozen', False):
             self.base_dir = os.path.dirname(sys.executable)
         else:
@@ -466,18 +533,25 @@ class RebootLauncherApp(ctk.CTk):
         self.geometry("950x650")
         self.minsize(850, 550)
         ctk.set_appearance_mode("dark")
-        self.configure(fg_color="#0b0b0b")
+        self.configure(fg_color=_T["bg"])
 
         self.settings = DEFAULT_CONFIG.copy()
         self.load_config()
 
-        # Variables for settings
+        _saved_theme = self.settings.get("theme", "Dark")
+        if _saved_theme in _THEMES:
+            _T.update(_THEMES[_saved_theme])
+        self.theme_var = ctk.StringVar(value=_saved_theme)
+
         self.builds = self.settings.get("builds", [])
         self.path_var = ctk.StringVar(value=self.settings.get("path", ""))
         self.dll_console_var = ctk.StringVar(value=self.settings.get("dll_console", ""))
         self.dll_auth_var = ctk.StringVar(value=self.settings.get("dll_auth", ""))
         self.dll_memory_var = ctk.StringVar(value=self.settings.get("dll_memory", ""))
         self.dll_server_var = ctk.StringVar(value=self.settings.get("dll_server", ""))
+        self.dll_auth_choice_var    = ctk.StringVar(value=self.settings.get("dll_auth_choice", "Cobalt"))
+        self.dll_console_choice_var = ctk.StringVar(value=self.settings.get("dll_console_choice", "Console"))
+        self.dll_server_choice_var  = ctk.StringVar(value=self.settings.get("dll_server_choice", "Reboot"))
         self.username_var = ctk.StringVar(value=self.settings.get("username", "PythonPlayer"))
         self.email_var = ctk.StringVar(value=self.settings.get("email", "player@projectreboot.py"))
         self.password_var = ctk.StringVar(value=self.settings.get("password", "12345678"))
@@ -523,14 +597,12 @@ class RebootLauncherApp(ctk.CTk):
         if self.backend_autostart_var.get():
             self.start_backend()
 
-        # Center the window
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = int((screen_width / 2) - (950 / 2))
         y = int((screen_height / 2) - (650 / 2))
         self.geometry(f"950x650+{x}+{y}")
         
-        # Show the window cleanly after a brief moment so the mainloop can catch up
         self.after(50, self.deiconify)
 
     def update_discord_rpc_state(self, *args, active_nav=None):
@@ -541,7 +613,6 @@ class RebootLauncherApp(ctk.CTk):
             is_client_running = hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None
             is_host_running = hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None
             
-            # If game is running, but we're just clicking tabs, DO NOT UPDATE THE RPC AT ALL.
             was_already_running = getattr(self, 'game_running', False)
             self.game_running = bool(is_client_running or is_host_running)
 
@@ -564,7 +635,6 @@ class RebootLauncherApp(ctk.CTk):
                         exe_path = b.get("exe", b.get("path", ""))
                         break
                         
-                # Use cached version info from handle_launch (avoids re-scanning the exe)
                 build_ver = getattr(self, '_rpc_build_ver', None) or self.get_game_version(exe_path)[0]
                 cl_ver    = getattr(self, '_rpc_cl_ver',    None) or self.get_game_version(exe_path)[1]
                 clean_build = re.sub(r'[-_]CL[-_]\d+', '', build_ver).strip().strip('-').strip()
@@ -617,16 +687,13 @@ class RebootLauncherApp(ctk.CTk):
             else:
                 self.backend_action_text.set("Start")
             
-            # Hide/Show relevant tiles if they exist and maintain correct order
             if hasattr(self, 'remote_url_tile') and hasattr(self, 'backend_path_tile') and hasattr(self, 'start_backend_tile'):
-                # First unpack everything
                 self.remote_url_tile.pack_forget()
                 self.local_port_tile.pack_forget()
                 self.backend_path_tile.pack_forget()
                 self.start_backend_tile.pack_forget()
                 self.autostart_backend_tile.pack_forget()
                 
-                # Then pack in correct order based on type
                 if btype == "Remote":
                     self.remote_url_tile.pack(fill="x", pady=6)
                 elif btype == "Local":
@@ -634,7 +701,6 @@ class RebootLauncherApp(ctk.CTk):
                 elif btype == "Embedded":
                     self.backend_path_tile.pack(fill="x", pady=6)
                     
-                # Always pack these last so they are at the bottom
                 self.start_backend_tile.pack(fill="x", pady=6)
                 self.autostart_backend_tile.pack(fill="x", pady=6)
                     
@@ -647,20 +713,16 @@ class RebootLauncherApp(ctk.CTk):
                 with open(CONFIG_PATH, "r") as f:
                     self.settings.update(json.load(f))
             except Exception as e: print('RPC Error:', e)
-        # Migrate old build name formats to "Fortnite vX.XX"
         changed = False
         for b in self.settings.get("builds", []):
             name = b.get("name", "")
-            # Already correct format
             if name.startswith("Fortnite v") and not name.startswith("Fortnite ("):
                 continue
-            # Try to extract version from old "Build X.XX" or "Build X.XX-CL-XXXXX" names
             m = re.search(r'(\d+\.\d+(?:\.\d+)?)', name)
             if m:
                 b["name"] = f"Fortnite v{m.group(1)}"
                 changed = True
             elif b.get("exe"):
-                # Re-derive from exe path
                 bv, _ = self.get_game_version(b["exe"])
                 if bv != "Unknown":
                     b["name"] = f"Fortnite v{bv}"
@@ -702,7 +764,10 @@ class RebootLauncherApp(ctk.CTk):
         self.settings["rpc_enabled"] = self.rpc_enabled_var.get()
         self.settings["dll_large_pak"] = self.dll_large_pak_var.get()
         self.settings["use_large_pak"] = self.use_large_pak_var.get()
-        # Update sidebar dynamically
+        self.settings["dll_auth_choice"]    = self.dll_auth_choice_var.get()
+        self.settings["dll_console_choice"] = self.dll_console_choice_var.get()
+        self.settings["dll_server_choice"]  = self.dll_server_choice_var.get()
+        self.settings["theme"] = self.theme_var.get()
         self.user_lbl.configure(text=self.username_var.get())
         self.email_lbl.configure(text=self.email_var.get())
         
@@ -711,23 +776,40 @@ class RebootLauncherApp(ctk.CTk):
                 json.dump(self.settings, f, indent=4)
         except Exception as e: print('RPC Error:', e)
 
+    def apply_theme(self, theme_name):
+        """Live-swap theme — update colors and rebuild UI without restarting."""
+        if theme_name not in _THEMES:
+            return
+        _T.update(_THEMES[theme_name])
+
+        self.configure(fg_color=_T["bg"])
+
+        self.sidebar.destroy()
+        self.setup_sidebar()
+
+        self.pages_frame.destroy()
+        self.setup_pages()
+
+        current = getattr(self, "_current_page", "Settings")
+        self.show_page(current)
+
+        self.save_config()
+
     def setup_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=240, corner_radius=0, fg_color="#121212")
+        self.sidebar = ctk.CTkFrame(self, width=240, corner_radius=0, fg_color=_T["sidebar"])
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(8, weight=1)
 
-        # Profile area (Matches original precisely)
         self.profile_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.profile_frame.pack(pady=(20,10), padx=20, fill="x")
 
-        # Avatar (user.png if available, else placeholder)
         user_img_path = os.path.join(self.base_dir, "assets", "images", "user.png")
         if HAS_PIL and os.path.exists(user_img_path):
             user_image = ctk.CTkImage(light_image=Image.open(user_img_path), size=(45, 45))
             avatar_lbl = ctk.CTkLabel(self.profile_frame, text="", image=user_image)
             avatar_lbl.pack(side="left", padx=(0, 10))
         else:
-            avatar_canvas = ctk.CTkCanvas(self.profile_frame, width=45, height=45, bg="#121212", highlightthickness=0)
+            avatar_canvas = ctk.CTkCanvas(self.profile_frame, width=45, height=45, bg=_T["sidebar"], highlightthickness=0)
             avatar_canvas.pack(side="left", padx=(0, 10))
             avatar_canvas.create_oval(2, 2, 43, 43, fill="#333333", outline="")
             avatar_canvas.create_text(22, 22, text="S", fill="white", font=("Segoe UI", 16, "bold"))
@@ -735,37 +817,35 @@ class RebootLauncherApp(ctk.CTk):
         info_frame = ctk.CTkFrame(self.profile_frame, fg_color="transparent")
         info_frame.pack(side="left", fill="both", expand=True)
 
-        self.user_lbl = ctk.CTkLabel(info_frame, text=self.settings.get("username", "Ssd"), font=("Segoe UI", 15, "bold"), anchor="w", text_color="#f4f4f5")
+        self.user_lbl = ctk.CTkLabel(info_frame, text=self.settings.get("username", "Ssd"), font=("Segoe UI", 15, "bold"), anchor="w", text_color=_T["text"])
         self.user_lbl.pack(fill="x", pady=(2,0))
-        self.email_lbl = ctk.CTkLabel(info_frame, text=self.settings.get("email", "ssd@gmail.com"), font=("Segoe UI", 11), text_color="#a1a1aa", anchor="w")
+        self.email_lbl = ctk.CTkLabel(info_frame, text=self.settings.get("email", "ssd@gmail.com"), font=("Segoe UI", 11), text_color=_T["subtext"], anchor="w")
         self.email_lbl.pack(fill="x")
 
-        # Search bar
-        search_f = ctk.CTkFrame(self.sidebar, fg_color="#1e1e1e", corner_radius=6, height=35)
+        search_f = ctk.CTkFrame(self.sidebar, fg_color=_T["nav_active"], corner_radius=6, height=35)
         search_f.pack(pady=15, padx=20, fill="x")
         search_f.pack_propagate(False)
         ctk.CTkEntry(search_f, placeholder_text="Find a setting", border_width=0, fg_color="transparent", text_color="#d4d4d8").pack(side="left", fill="both", expand=True, padx=5)
 
-        # Nav Buttons list exactly from screenshot
         self.nav_btns = {}
         nav_items = ["Play", "Download", "Host", "Backend", "Info", "Settings"]
         for item in nav_items:
             img_path = os.path.join(self.base_dir, "assets", "images", f"{item.lower()}.png")
             if HAS_PIL and os.path.exists(img_path):
                 btn_img = ctk.CTkImage(light_image=Image.open(img_path), size=(20, 20))
-                btn = ctk.CTkButton(self.sidebar, text=f"  {item}", image=btn_img, anchor="w", fg_color="transparent", 
-                                    hover_color="#1e1e1e", font=("Segoe UI", 14), corner_radius=6, height=38,
+                btn = ctk.CTkButton(self.sidebar, text=f"  {item}", image=btn_img, anchor="w", fg_color="transparent",
+                                    hover_color=_T["nav_active"], font=("Segoe UI", 14), corner_radius=6, height=38,
                                     command=lambda n=item: self.show_page(n))
             else:
-                btn = ctk.CTkButton(self.sidebar, text=f"   {item}", anchor="w", fg_color="transparent", 
-                                    hover_color="#1e1e1e", font=("Segoe UI", 14), corner_radius=6, height=38,
+                btn = ctk.CTkButton(self.sidebar, text=f"   {item}", anchor="w", fg_color="transparent",
+                                    hover_color=_T["nav_active"], font=("Segoe UI", 14), corner_radius=6, height=38,
                                     command=lambda n=item: self.show_page(n))
             
             btn.pack(fill="x", padx=15, pady=2)
             self.nav_btns[item] = btn
 
     def setup_pages(self):
-        self.pages_frame = ctk.CTkFrame(self, fg_color="#0f0f0f", corner_radius=0)
+        self.pages_frame = ctk.CTkFrame(self, fg_color=_T["content"], corner_radius=0)
         self.pages_frame.grid(row=0, column=1, sticky="nsew")
         self.pages_frame.grid_rowconfigure(0, weight=1)
         self.pages_frame.grid_columnconfigure(0, weight=1)
@@ -773,15 +853,14 @@ class RebootLauncherApp(ctk.CTk):
         self.pages = {}
         self._pages_built = set()
         self._all_page_names = ["Play", "Download", "ClientOptions", "Host", "HostInformation", "HostOptions", "HostShare", "Backend", "Info", "Settings", "AccountSettings", "InternalFiles"]
-        # Only pages with lots of content get a scrollbar — everything else is a plain frame
-        _scrollable = {"Info", "Settings", "InternalFiles"}
+        _scrollable = {"Info", "Settings", "InternalFiles", "AccountSettings"}
         for name in self._all_page_names:
             if name in _scrollable:
                 f = ctk.CTkScrollableFrame(
                     self.pages_frame,
                     fg_color="transparent",
-                    scrollbar_button_color="#2d2d2d",
-                    scrollbar_button_hover_color="#3d3d3d",
+                    scrollbar_button_color=_T["muted"],
+                    scrollbar_button_hover_color=_T["muted_hover"],
                 )
             else:
                 f = ctk.CTkFrame(self.pages_frame, fg_color="transparent")
@@ -796,15 +875,15 @@ class RebootLauncherApp(ctk.CTk):
             if is_client:
                 self.launch_btn.configure(text="Stop Client", fg_color="#ef4444", hover_color="#dc2626")
             else:
-                self.launch_btn.configure(text="Play",        fg_color="#3b82f6", hover_color="#2563eb")
+                self.launch_btn.configure(text="Play",        fg_color=_T["accent"], hover_color=_T["accent_hover"])
         if hasattr(self, 'host_btn'):
             if is_hosting:
                 self.host_btn.configure(text="Stop Server", fg_color="#ef4444", hover_color="#dc2626")
             else:
-                self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
+                self.host_btn.configure(text="Host Server", fg_color=_T["accent"], hover_color=_T["accent_hover"])
 
     def show_page(self, name):
-        # Lazy-build: only construct page content on first visit
+        self._current_page = name
         if name not in self._pages_built:
             getattr(self, f"build_{name.lower()}_page")(self.pages[name])
             self._pages_built.add(name)
@@ -821,11 +900,10 @@ class RebootLauncherApp(ctk.CTk):
             active_nav = "Host"
 
         for n, btn in self.nav_btns.items():
-            btn.configure(fg_color="#1e1e1e" if n == active_nav else "transparent")
+            btn.configure(fg_color=_T["nav_active"] if n == active_nav else "transparent")
 
         self.pages[name].grid(row=0, column=0, sticky="nsew", padx=40, pady=30)
 
-        # Always re-sync button colours after the page is visible
         self._sync_button_states()
 
         self.save_config()
@@ -836,29 +914,28 @@ class RebootLauncherApp(ctk.CTk):
     def build_play_page(self, parent):
         ctk.CTkLabel(parent, text="Play", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
         
-        builds_frame = ctk.CTkFrame(parent, fg_color="#181818", corner_radius=5, height=78)
+        builds_frame = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=5, height=78)
         builds_frame.pack(fill="x", pady=6)
         builds_frame.pack_propagate(False)
 
         text_frame = ctk.CTkFrame(builds_frame, fg_color="transparent")
         text_frame.pack(side="left", padx=20, fill="y", pady=15)
         
-        ctk.CTkLabel(text_frame, text="Select Build", font=("Segoe UI", 15, "bold"), text_color="#f4f4f5", anchor="w").pack(fill="x", pady=(0, 2))
-        ctk.CTkLabel(text_frame, text="Choose a Fortnite version to launch or add a new one", font=("Segoe UI", 12), text_color="#a1a1aa", anchor="w").pack(fill="x")
+        ctk.CTkLabel(text_frame, text="Select Build", font=("Segoe UI", 15, "bold"), text_color=_T["text"], anchor="w").pack(fill="x", pady=(0, 2))
+        ctk.CTkLabel(text_frame, text="Choose a Fortnite version to launch or add a new one", font=("Segoe UI", 12), text_color=_T["subtext"], anchor="w").pack(fill="x")
 
-        # Let's add the button on the right
-        add_btn = ctk.CTkButton(builds_frame, text="+", font=("Segoe UI", 18, "bold"), fg_color="#2d2d2d", hover_color="#3d3d3d", text_color="white", width=34, height=34, corner_radius=4, command=self.add_build)
+        add_btn = ctk.CTkButton(builds_frame, text="+", font=("Segoe UI", 18, "bold"), fg_color=_T["muted"], hover_color=_T["muted_hover"], text_color="white", width=34, height=34, corner_radius=4, command=self.add_build)
         add_btn.pack(side="right", padx=(5, 20))
         
         rem_btn = ctk.CTkButton(builds_frame, text="-", font=("Segoe UI", 20, "bold"), fg_color="#ef4444", hover_color="#dc2626", text_color="white", width=34, height=34, corner_radius=4, command=self.remove_build)
         rem_btn.pack(side="right", padx=(10, 5))
         
-        self.build_option_menu = ctk.CTkOptionMenu(builds_frame, variable=self.path_var, values=[b.get("name", b.get("path")) for b in self.builds] if self.builds else ["No builds added"], fg_color="#2d2d2d", button_color="#3d3d3d", button_hover_color="#4d4d4d", dropdown_fg_color="#2d2d2d", width=250)
+        self.build_option_menu = ctk.CTkOptionMenu(builds_frame, variable=self.path_var, values=[b.get("name", b.get("path")) for b in self.builds] if self.builds else ["No builds added"], fg_color=_T["muted"], button_color=_T["muted_hover"], button_hover_color=_T["muted_deep"], dropdown_fg_color=_T["muted"], width=250)
         self.build_option_menu.pack(side="right", padx=(0, 0))
 
         SettingTile(parent, "Client Options", "Override engine arguments", button_text=">", is_subpage=True, button_command=lambda: self.show_page("ClientOptions"))
         
-        self.launch_btn = ctk.CTkButton(parent, text="Play", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=self.handle_launch)
+        self.launch_btn = ctk.CTkButton(parent, text="Play", fg_color=_T["accent"], font=("Segoe UI", 18, "bold"), height=55, hover_color=_T["accent_hover"], command=self.handle_launch)
         self.launch_btn.pack(pady=40, fill="x")
 
     def build_download_page(self, parent):
@@ -914,21 +991,20 @@ class RebootLauncherApp(ctk.CTk):
                 version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
                 parts    = get_version_tuple(url)
                 is_valid = not (parts and (parts[0] > 10 or (parts[0] == 10 and len(parts) > 1 and parts[1] > 31)))
-                tile     = ctk.CTkFrame(self.downloads_container, fg_color="#1E1E1E", corner_radius=8)
+                tile     = ctk.CTkFrame(self.downloads_container, fg_color=_T["nav_active"], corner_radius=8)
 
                 if view_mode == "List View":
                     tile.pack(fill="x", pady=4, padx=5)
                     ctk.CTkLabel(tile, text=f"Version {version_str}", font=("Segoe UI", 15, "bold"),
                                  text_color="white" if is_valid else "#52525b").pack(side="left", padx=15, pady=15)
                     if is_valid:
-                        # Progress bar + status label (hidden until download starts)
                         info_frame = ctk.CTkFrame(tile, fg_color="transparent")
                         info_frame.pack(side="right", padx=15, fill="x", expand=True)
-                        prog_bar  = ctk.CTkProgressBar(info_frame, width=180, height=8, progress_color="#2563eb", fg_color="#2d2d2d")
+                        prog_bar  = ctk.CTkProgressBar(info_frame, width=180, height=8, progress_color=_T["accent_hover"], fg_color=_T["muted"])
                         prog_bar.set(0)
                         stat_lbl  = ctk.CTkLabel(info_frame, text="", font=("Segoe UI", 11), text_color="#a1a1aa")
                         dl_btn    = ctk.CTkButton(tile, text="Download", width=100,
-                                                  fg_color="#2563eb", hover_color="#1d4ed8")
+                                                  fg_color=_T["accent_hover"], hover_color=_T["accent_hover"])
                         dl_btn.pack(side="right", padx=(0, 10))
                         dl_btn.configure(command=lambda u=url, vs=version_str, pb=prog_bar, sl=stat_lbl, b=dl_btn:
                                          self._start_download(u, vs, pb, sl, b))
@@ -941,11 +1017,11 @@ class RebootLauncherApp(ctk.CTk):
                     ctk.CTkLabel(tile, text=f"v{version_str}", font=("Segoe UI", 18, "bold"),
                                  text_color="white" if is_valid else "#52525b").pack(pady=(15, 5))
                     if is_valid:
-                        prog_bar = ctk.CTkProgressBar(tile, width=140, height=8, progress_color="#2563eb", fg_color="#2d2d2d")
+                        prog_bar = ctk.CTkProgressBar(tile, width=140, height=8, progress_color=_T["accent"], fg_color=_T["muted"])
                         prog_bar.set(0)
                         stat_lbl = ctk.CTkLabel(tile, text="", font=("Segoe UI", 10), text_color="#a1a1aa")
                         dl_btn   = ctk.CTkButton(tile, text="Download", width=100,
-                                                 fg_color="#2563eb", hover_color="#1d4ed8")
+                                                 fg_color=_T["accent_hover"], hover_color=_T["accent_hover"])
                         dl_btn.pack(pady=(5, 15))
                         dl_btn.configure(command=lambda u=url, vs=version_str, pb=prog_bar, sl=stat_lbl, b=dl_btn:
                                          self._start_download(u, vs, pb, sl, b))
@@ -984,7 +1060,6 @@ class RebootLauncherApp(ctk.CTk):
         filename = urllib.parse.unquote(url.split('/')[-1])
         dest     = os.path.join(save_dir, filename)
 
-        # Lock the button while downloading
         dl_btn.configure(state="disabled", text="Downloading…", fg_color="#1d4020")
         prog_bar.pack(pady=(0, 2))
         stat_lbl.pack()
@@ -994,7 +1069,6 @@ class RebootLauncherApp(ctk.CTk):
         def run():
             cancelled = [False]
 
-            # ── aria2c path ──────────────────────────────────────────────────
             if os.path.exists(aria2c):
                 cmd = [
                     aria2c,
@@ -1007,8 +1081,6 @@ class RebootLauncherApp(ctk.CTk):
                 ]
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         text=True, encoding="utf-8", errors="replace")
-                # aria2c progress line looks like:
-                # [#abc 45MiB/230MiB(19%) CN:16 DL:8.5MiB/s ETA:22s]
                 aria_re = re.compile(
                     r'\((\d+)%\).*DL:([\d\.]+\w+/s)(?:.*ETA:([\d]+s))?'
                 )
@@ -1023,7 +1095,6 @@ class RebootLauncherApp(ctk.CTk):
                 proc.wait()
                 ok = proc.returncode == 0 and os.path.exists(dest)
 
-            # ── urllib fallback ──────────────────────────────────────────────
             else:
                 try:
                     req  = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -1096,7 +1167,6 @@ class RebootLauncherApp(ctk.CTk):
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         text=True, encoding="utf-8", errors="replace")
-                # 7zip outputs "XX%" lines we can parse
                 pct_re = re.compile(r'(\d+)%')
                 for line in proc.stdout:
                     m = pct_re.search(line)
@@ -1119,7 +1189,7 @@ class RebootLauncherApp(ctk.CTk):
     def build_clientoptions_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Play"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Play"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Play > Client Options", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
@@ -1134,13 +1204,13 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Share Link", "Share your server with other people online", button_text=">", is_subpage=True, button_command=lambda: self.show_page("HostShare"))
         SettingTile(parent, "Reset to defaults", "Restore the default settings for the game server", button_text="Reset")
 
-        self.host_btn = ctk.CTkButton(parent, text="Host Server", fg_color="#3b82f6", font=("Segoe UI", 18, "bold"), height=55, hover_color="#2563eb", command=lambda: self.handle_launch(is_host=True))
+        self.host_btn = ctk.CTkButton(parent, text="Host Server", fg_color=_T["accent"], font=("Segoe UI", 18, "bold"), height=55, hover_color=_T["accent_hover"], command=lambda: self.handle_launch(is_host=True))
         self.host_btn.pack(pady=40, fill="x")
 
     def build_hostinformation_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Host"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Host"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Host > Information", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
@@ -1151,7 +1221,7 @@ class RebootLauncherApp(ctk.CTk):
     def build_hostoptions_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Host"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Host"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Host > Options", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
@@ -1163,7 +1233,7 @@ class RebootLauncherApp(ctk.CTk):
     def build_hostshare_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Host"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Host"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Host > Share", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
@@ -1189,10 +1259,10 @@ class RebootLauncherApp(ctk.CTk):
         ctk.CTkLabel(parent, text="Info", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
 
         # --- Hero banner ---
-        hero = ctk.CTkFrame(parent, fg_color="#111827", corner_radius=10)
+        hero = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=10)
         hero.pack(fill="x", pady=(0, 16))
-        ctk.CTkLabel(hero, text="Reboot.py", font=("Segoe UI", 26, "bold"), text_color="#3b82f6").pack(pady=(22, 2))
-        ctk.CTkLabel(hero, text="v2.0  ·  The most lightweight way to play legacy Fortnite", font=("Segoe UI", 12), text_color="#71717a").pack()
+        ctk.CTkLabel(hero, text="Reboot.py", font=("Segoe UI", 26, "bold"), text_color=_T["accent"]).pack(pady=(22, 2))
+        ctk.CTkLabel(hero, text="v1.2  ·  The most lightweight way to play legacy Fortnite", font=("Segoe UI", 12), text_color="#71717a").pack()
         btn_row = ctk.CTkFrame(hero, fg_color="transparent")
         btn_row.pack(pady=(14, 22))
         ctk.CTkButton(btn_row, text="Discord", fg_color="#5865F2", hover_color="#4752C4", width=110, height=32, corner_radius=6,
@@ -1200,56 +1270,47 @@ class RebootLauncherApp(ctk.CTk):
         ctk.CTkButton(btn_row, text="GitHub", fg_color="#24292e", hover_color="#1a1f24", width=110, height=32, corner_radius=6,
                       command=lambda: webbrowser.open("https://github.com/Ducki67/Project-Reboot.py")).pack(side="left", padx=8)
 
-        # --- Changelog ---
-        ctk.CTkLabel(parent, text="Changelog", font=("Segoe UI", 18, "bold"), text_color="#f4f4f5", anchor="w").pack(fill="x", pady=(8, 6))
+        # --- Changelog (links to GitHub Releases) ---
+        ctk.CTkLabel(parent, text="Releases", font=("Segoe UI", 18, "bold"), text_color=_T["text"], anchor="w").pack(fill="x", pady=(8, 6))
 
-        changelog = [
-            ("v2.0 — Current", "#3b82f6", [
-                "Discord Rich Presence — shows build version, CL, and season artwork",
-                "Season-aware RPC images for every chapter (Ch1 through Ch5S3)",
-                "Build names now display as 'Fortnite vXX.YY' with correct version detection",
-                "Version detection fixed for UE5 builds (S20+) via ++Fortnite+Release pattern",
-                "Path-based version fallback — reads version from folder name if binary scan fails",
-                "LargePakPatch DLL support (auto-download, gated to builds >5.10 and <14.40)",
-                "Login trigger fixed for S20+ builds using 'LogOnline: Region' line",
-                "major_version now parsed from Fortnite build string, not UE engine version",
-                "Build list auto-migrates old 'Build X.XX-CL-...' names on startup",
-                "CL mapping loaded from cl_mapping.json for accurate version display",
-                "S20-aware server DLL selection (reboot.dll vs rebootS20.dll)",
-                "LargePakPatch fixed to use direct download instead of treating URL as zip",
-            ]),
-            ("v1.0 — Initial Release", "#71717a", [
-                "Native Python launcher — no Dart/Flutter dependency",
-                "DLL injection: auth, console, memory, game server",
-                "EAC + FortniteLauncher.exe suspended on startup",
-                "Embedded / Local / Remote backend support with proxy on port 3551",
-                "Build downloader with aria2c and urllib fallback",
-                "Headless server mode with binary byte-patch",
-                "Discord RPC base integration",
-                "Auto-download missing DLLs from nightly builds",
-            ]),
+        _RELEASES_BASE = "https://github.com/Ducki67/Project-Reboot.py/releases/tag/"
+        releases = [
+            ("v1.2", "Current", _T["accent"],   "Multi-theme system, DLL preset selection (Cobalt/Erbium), lazy page loading, scrollbar fixes"),
+            ("v1.1", "",        "#71717a",       "Discord RPC, season-aware images, UE5 version detection, LargePakPatch, S20+ login fix"),
+            ("v1.0", "",        "#52525b",       "Initial release — DLL injection, backend proxy, build downloader, headless server mode"),
         ]
 
-        for version, accent, items in changelog:
-            card = ctk.CTkFrame(parent, fg_color="#181818", corner_radius=8)
+        for tag, badge, accent, summary in releases:
+            card = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=8)
             card.pack(fill="x", pady=5)
-            header_row = ctk.CTkFrame(card, fg_color="transparent")
-            header_row.pack(fill="x", padx=16, pady=(14, 6))
-            # Accent dot
-            dot = ctk.CTkFrame(header_row, fg_color=accent, width=10, height=10, corner_radius=5)
-            dot.pack(side="left", padx=(0, 8))
+
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="x", padx=16, pady=14)
+
+            left = ctk.CTkFrame(inner, fg_color="transparent")
+            left.pack(side="left", fill="x", expand=True)
+
+            title_row = ctk.CTkFrame(left, fg_color="transparent")
+            title_row.pack(fill="x")
+
+            dot = ctk.CTkFrame(title_row, fg_color=accent, width=10, height=10, corner_radius=5)
+            dot.pack(side="left", padx=(0, 8), pady=3)
             dot.pack_propagate(False)
-            ctk.CTkLabel(header_row, text=version, font=("Segoe UI", 14, "bold"), text_color="#f4f4f5").pack(side="left")
-            # Divider
-            ctk.CTkFrame(card, fg_color="#2d2d2d", height=1).pack(fill="x", padx=16)
-            # Items
-            items_frame = ctk.CTkFrame(card, fg_color="transparent")
-            items_frame.pack(fill="x", padx=20, pady=(8, 14))
-            for item in items:
-                row = ctk.CTkFrame(items_frame, fg_color="transparent")
-                row.pack(fill="x", pady=2)
-                ctk.CTkLabel(row, text="·", font=("Segoe UI", 13), text_color=accent, width=14, anchor="w").pack(side="left")
-                ctk.CTkLabel(row, text=item, font=("Segoe UI", 12), text_color="#a1a1aa", anchor="w", wraplength=700, justify="left").pack(side="left", fill="x")
+
+            ctk.CTkLabel(title_row, text=tag, font=("Segoe UI", 14, "bold"), text_color=_T["text"]).pack(side="left")
+
+            if badge:
+                badge_lbl = ctk.CTkLabel(title_row, text=f" {badge}", font=("Segoe UI", 11, "bold"),
+                                         text_color=accent, fg_color="transparent")
+                badge_lbl.pack(side="left", padx=(6, 0))
+
+            ctk.CTkLabel(left, text=summary, font=("Segoe UI", 12), text_color=_T["subtext"],
+                         anchor="w", wraplength=580, justify="left").pack(fill="x", pady=(4, 0))
+
+            ctk.CTkButton(inner, text="View on GitHub", width=130, height=32, corner_radius=6,
+                          fg_color=_T["muted"], hover_color=_T["muted_hover"], text_color=_T["text"],
+                          font=("Segoe UI", 12),
+                          command=lambda t=tag: webbrowser.open(_RELEASES_BASE + t)).pack(side="right")
 
         ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games  ·  powered by CustomTkinter",
                      text_color="#3f3f46", font=("Segoe UI", 11)).pack(pady=30)
@@ -1261,30 +1322,37 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Discord Activity", "Show your status playing Reboot on Discord", is_switch=True, switch_var=self.rpc_enabled_var)
         SettingTile(parent, "LargePakPatch", "Inject LargePakPatch.dll after login for custom mods — auto-downloads from Atlas Link", is_switch=True, switch_var=self.use_large_pak_var)
         SettingTile(parent, "Language", "Select the language to use inside the launcher", button_text="English")
-        SettingTile(parent, "Theme", "Select the theme to use inside the launcher", button_text="Dark")
+        SettingTile(parent, "Theme", "Select the theme to use inside the launcher",
+                    is_option=True, option_var=self.theme_var,
+                    options_list=list(_THEMES.keys()))
+        self.theme_var.trace_add("write", lambda *_: self.apply_theme(self.theme_var.get()))
         SettingTile(parent, "Internal files", "Configure the internal files used by the launcher", button_text=">", is_subpage=True, button_command=lambda: self.show_page("InternalFiles"))
-        SettingTile(parent, "Add Game Build", "Select a game directory to add to the launcher", button_text="Browse", show_entry=True, entry_var=self.path_var, button_command=self.add_build)
 
     def build_internalfiles_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
         
-        # Back button
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Settings"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Settings"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Settings > Internal files", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
-        SettingTile(parent, "Unreal engine patcher", "Unlocks the Unreal Engine Console", button_text="Browse", show_entry=True, entry_var=self.dll_console_var, button_command=lambda: self.browse_dll(self.dll_console_var))
-        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend", button_text="Browse", show_entry=True, entry_var=self.dll_auth_var, button_command=lambda: self.browse_dll(self.dll_auth_var))
+        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Cobalt (default), Tellurium for S29+",
+                    is_option=True, option_var=self.dll_auth_choice_var,
+                    options_list=list(_DLL_AUTH_PRESETS.keys()))
+        SettingTile(parent, "Unreal engine patcher", "Unlocks the Unreal Engine Console — use Erbium Client for Ch3+",
+                    is_option=True, option_var=self.dll_console_choice_var,
+                    options_list=list(_DLL_CONSOLE_PRESETS.keys()))
+        SettingTile(parent, "Game server", "The server DLL injected on launch — use Erbium for Ch3+",
+                    is_option=True, option_var=self.dll_server_choice_var,
+                    options_list=list(_DLL_SERVER_PRESETS.keys()))
         SettingTile(parent, "Memory patcher", "Prevents the client from crashing because of a memory leak", button_text="Browse", show_entry=True, entry_var=self.dll_memory_var, button_command=lambda: self.browse_dll(self.dll_memory_var))
-        SettingTile(parent, "Game server", "The file injected to create the game server", button_text="Browse", show_entry=True, entry_var=self.dll_server_var, button_command=lambda: self.browse_dll(self.dll_server_var))
 
         SettingTile(parent, "LargePakPatch DLL", "Custom path — leave blank to auto-download", button_text="Browse", show_entry=True, entry_var=self.dll_large_pak_var, button_command=lambda: self.browse_dll(self.dll_large_pak_var))
 
     def build_accountsettings_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color="#1e1e1e", command=lambda: self.show_page("Settings"))
+        back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Settings"))
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Settings > Account", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
@@ -1292,7 +1360,6 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Email", "Account email", show_entry=True, entry_var=self.email_var)
         SettingTile(parent, "Password", "Account password", show_entry=True, entry_var=self.password_var)
 
-        # Host Account settings
         ctk.CTkLabel(parent, text="Host Account", font=("Segoe UI", 20, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(20, 10))
         SettingTile(parent, "Host Username", "In-game display name for host", show_entry=True, entry_var=self.host_username_var)
         SettingTile(parent, "Host Email", "Account email for host", show_entry=True, entry_var=self.host_email_var)
@@ -1335,7 +1402,6 @@ class RebootLauncherApp(ctk.CTk):
             else:
                 display_name = f"Fortnite ({os.path.basename(f)})"
             
-            # Check if already exists
             for b in self.builds:
                 if b.get("exe") == exe:
                     self.path_var.set(b.get("name", display_name))
@@ -1363,7 +1429,6 @@ class RebootLauncherApp(ctk.CTk):
             self.save_config()
 
     def start_backend(self):
-        # Write DefaultInput.ini so the console key is always current
         _write_default_input(self.base_dir)
 
         backend_type = self.backend_type_var.get()
@@ -1375,7 +1440,6 @@ class RebootLauncherApp(ctk.CTk):
                 messagebox.showerror("Error", "Embedded backend executable not found.")
                 return
 
-            # Kill anything already on 3551 and 80 before starting (mirrors Dart port cleanup)
             _kill_port(3551)
             _kill_port(80)
 
@@ -1410,8 +1474,6 @@ class RebootLauncherApp(ctk.CTk):
                         "Error", f"Failed to reach {backend_type} backend:\n{err}"))
 
                 if reachable:
-                    # For remote or non-3551 local: start proxy so auth DLL can always
-                    # hit 127.0.0.1:3551 (mirrors shelf_proxy in Dart)
                     needs_proxy = (backend_type == "Remote") or \
                                   (backend_type == "Local" and
                                    self.backend_port_var.get().strip() != "3551")
@@ -1444,7 +1506,6 @@ class RebootLauncherApp(ctk.CTk):
             full_path = os.path.abspath(dll_path)
             path_bytes = full_path.encode('ascii') + b'\x00'
 
-            # 0x43A = PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_QUERY_INFORMATION
             h_proc = k32.OpenProcess(0x43A, False, pid)
             if not h_proc: 
                 return False
@@ -1481,13 +1542,11 @@ class RebootLauncherApp(ctk.CTk):
                         self.cl_mappings = json.load(f)
                 except Exception:
                     pass
-            # Fetch from helix-dev-q archive if CL isn't mapped
             if cl and cl not in self.cl_mappings:
                 try:
                     import urllib.request, re, json
                     req = urllib.request.Request('https://raw.githubusercontent.com/Helix-Dev-Q/fortnite-builds-archive/main/README.md', headers={'User-Agent': 'Mozilla/5.0'})
                     html = urllib.request.urlopen(req, timeout=3).read().decode('utf-8')
-                    # Parse both markdown table formats for versions and CLs
                     matches = re.findall(r'\|\s*([a-zA-Z0-9\.]+)(?:\s+\(.*?-CL-(\d+)\)|-CL-(\d+))\s*\|', html)
                     for m in matches:
                         v = m[0]
@@ -1495,7 +1554,6 @@ class RebootLauncherApp(ctk.CTk):
                         if c:
                             self.cl_mappings[c] = v
                             
-                    # Cache the mapping
                     with open(mapping_file, "w") as f:
                         json.dump(self.cl_mappings, f, indent=4)
                 except Exception as e:
@@ -1505,7 +1563,7 @@ class RebootLauncherApp(ctk.CTk):
 
     def get_game_version(self, exe_path):
         """
-        Mirrors Dart extractGameVersion(): reads CrashReportClient.exe (not the
+: reads CrashReportClient.exe (not the
         shipping exe) because the shipping exe only stores the UE engine version
         (e.g. 4.25.0.0) while CrashReportClient has the full Fortnite build
         string like: 4.25.0-14702800+++Fortnite+Release-12.41
@@ -1514,7 +1572,6 @@ class RebootLauncherApp(ctk.CTk):
         bin_dir = os.path.dirname(exe_path)
         game_root = os.path.dirname(os.path.dirname(os.path.dirname(bin_dir)))  # up from Win64/Binaries/FortniteGame
 
-        # Find CrashReportClient.exe anywhere under the game root (mirrors Dart findFiles)
         crc_exe = _find_exe(game_root, "CrashReportClient.exe") or \
                   _find_exe(bin_dir,   "CrashReportClient.exe")
 
@@ -1547,14 +1604,12 @@ class RebootLauncherApp(ctk.CTk):
             except Exception:
                 pass
 
-        # --- Binary scan of CrashReportClient.exe (UTF-16LE, mirrors Dart property scan) ---
+
         for scan_path in filter(None, [crc_exe, exe_path]):
             try:
                 with open(scan_path, 'rb') as f:
                     raw = f.read(8_000_000)  # 8 MB — covers larger UE5 binaries
-                # Try UTF-16LE first (the property store stores it wide)
                 for data in (raw.replace(b'\x00', b''), raw):
-                    # Pattern 1: UE4 format — "5.4.0-29739262+++Fortnite+Release-27.11"
                     m = re.search(
                         rb'\d+\.\d+\.\d+-(\d+)\+\+\+Fortnite\+Release-([a-zA-Z0-9\.]+)',
                         data
@@ -1565,7 +1620,6 @@ class RebootLauncherApp(ctk.CTk):
                         mapped = self.get_cl_mapping(cl)
                         if mapped: build = mapped
                         return build, cl
-                    # Pattern 2: UE5 buildversion format — "++Fortnite+Release-27.11-CL-29739262"
                     m2 = re.search(
                         rb'\+\+Fortnite\+Release-(\d+\.\d+)-CL-(\d+)',
                         data
@@ -1594,14 +1648,11 @@ class RebootLauncherApp(ctk.CTk):
             pass
 
         # --- Path-based fallback: parse version from directory names in the exe path ---
-        # e.g. "27.11-CL-29739262" or "Fortnite 8.51" or "Fortnite v3.6"
         if build == "Unknown":
             for part in reversed(exe_path.replace('\\', '/').split('/')):
-                # Match "27.11-CL-29739262", "23.50", "8.51", "v3.6", "1.7.2" etc.
                 m = re.search(r'(?:^|v|Fortnite[\s_]?v?)(\d+\.\d+(?:\.\d+)?)', part, re.IGNORECASE)
                 if m:
                     build = m.group(1)
-                    # Also try to extract CL from path part
                     cl_m = re.search(r'CL[-_](\d+)', part)
                     if cl_m and cl == "Unknown":
                         cl = cl_m.group(1)
@@ -1677,8 +1728,6 @@ class RebootLauncherApp(ctk.CTk):
             _write_matchmaker_config(self.base_dir, "127.0.0.1", game_port or "7777")
 
         # --- Detect game major version + cache build info for RPC ---
-        # Parse from the Fortnite build string (e.g. "27.11" → 27), NOT from
-        # FileVersionMS which returns the UE engine major (e.g. 5 for UE5 builds).
         _bv, _cl = self.get_game_version(exe_path)
         self._rpc_build_ver = _bv
         self._rpc_cl_ver    = _cl
@@ -1691,23 +1740,32 @@ class RebootLauncherApp(ctk.CTk):
 
         # --- Auto-download missing DLLs ---
         dll_dir = os.path.join(self.base_dir, "dlls")
-        def _ensure(var, name, zip_url=None, direct_url=None):
+        def _ensure(var, name, zip_url=None, direct_url=None, no_download=False):
             p = var.get()
             if not p or not os.path.exists(p):
                 default = os.path.join(dll_dir, name)
-                _download_dll(name, default, zip_url, direct_url)
+                if not no_download:
+                    _download_dll(name, default, zip_url, direct_url)
                 if os.path.exists(default):
                     var.set(default)
                     self.save_config()
-        _ensure(self.dll_auth_var,    "sinum.dll")
-        _ensure(self.dll_console_var, "console.dll")
-        _ensure(self.dll_memory_var,  "memory.dll")
-        # S20-aware server DLL selection (mirrors Dart reboot.dll / rebootS20.dll)
-        if major_version >= 20:
-            _ensure(self.dll_server_var, "rebootS20.dll", _REBOOT_S20_DLL_URL)
-        else:
-            _ensure(self.dll_server_var, "reboot.dll", _REBOOT_DLL_URL)
-        # LargePakPatch — auto-download if toggle on and file missing (direct DLL, not a zip)
+                elif no_download:
+                    print(f"[!] {name} not found — place it in the dlls folder manually")
+
+        _auth_fn, _auth_zip, _auth_dir, _auth_nd = _DLL_AUTH_PRESETS.get(
+            self.dll_auth_choice_var.get(), _DLL_AUTH_PRESETS["Cobalt"])
+        _ensure(self.dll_auth_var, _auth_fn, zip_url=_auth_zip, direct_url=_auth_dir, no_download=_auth_nd)
+
+        _con_fn, _con_zip, _con_dir, _con_nd = _DLL_CONSOLE_PRESETS.get(
+            self.dll_console_choice_var.get(), _DLL_CONSOLE_PRESETS["Console"])
+        _ensure(self.dll_console_var, _con_fn, zip_url=_con_zip, direct_url=_con_dir, no_download=_con_nd)
+
+        _ensure(self.dll_memory_var, "memory.dll")
+
+        _srv_fn, _srv_zip, _srv_dir, _srv_nd = _DLL_SERVER_PRESETS.get(
+            self.dll_server_choice_var.get(), _DLL_SERVER_PRESETS["Reboot"])
+        _ensure(self.dll_server_var, _srv_fn, zip_url=_srv_zip, direct_url=_srv_dir, no_download=_srv_nd)
+
         if self.use_large_pak_var.get():
             _ensure(self.dll_large_pak_var, "LargePakPatch.dll", direct_url=_LARGE_PAK_URL)
 
@@ -1720,7 +1778,6 @@ class RebootLauncherApp(ctk.CTk):
             password = self.settings.get("password", "")
 
         custom_args = self.host_custom_args_var.get() if is_host else ""
-        # Also fold in port / maxplayers as custom tokens for host
         if is_host:
             if game_port:
                 custom_args += f" -port={game_port}"
@@ -1736,10 +1793,8 @@ class RebootLauncherApp(ctk.CTk):
 
         launch_cmd = [exe_path] + args_list
         launch_env = os.environ.copy()
-        launch_env["OPENSSL_ia32cap"] = "~0x20000000"   # mirrors Dart environment
-
+        launch_env["OPENSSL_ia32cap"] = "~0x20000000"   #
         # --- Start FortniteLauncher.exe and EAC exe SUSPENDED (bypass EAC) ---
-        # Search upward: EAC lives in Win64/, Launcher can be anywhere up to game root
         game_root = bin_dir
         for _ in range(4):
             game_root = os.path.dirname(game_root)
@@ -1760,15 +1815,12 @@ class RebootLauncherApp(ctk.CTk):
                 print(f"[!] {suspended_name} not found — skipping suspension")
                 continue
             try:
-                # CREATE_SUSPENDED|CREATE_NO_WINDOW = 0x08000004
-                # Primary thread starts suspended before ANY code runs
                 sus_proc = subprocess.Popen(
                     [sus_exe],
                     cwd=os.path.dirname(sus_exe),
                     env=launch_env,
                     creationflags=0x08000004
                 )
-                # Reinforce with NtSuspendProcess (atomic, covers any threads already created)
                 _nt_suspend_process(sus_proc.pid)
                 paused_pids.append(sus_proc.pid)
                 print(f"[+] Suspended {suspended_name} (pid={sus_proc.pid})")
@@ -1801,7 +1853,6 @@ class RebootLauncherApp(ctk.CTk):
 
         is_headless = self.host_headless_var.get() if is_host else False
         
-        # update_discord_rpc_state will automatically check game_process and host_process
         self.update_discord_rpc_state()
 
         threading.Thread(
@@ -1819,14 +1870,11 @@ class RebootLauncherApp(ctk.CTk):
         dll_memory  = self.dll_memory_var.get()
         dll_console = self.dll_console_var.get()
 
-        # 1. IMMEDIATE: inject auth DLL right after the process starts
         if dll_auth and os.path.exists(dll_auth):
             ok = self.python_injector(target_pid, dll_auth)
             print(f"[+] Auth inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_auth)})")
-            # Fire the game-running RPC the moment we have a live PID + auth DLL in
             self.after(0, self.update_discord_rpc_state)
 
-        # 2. LOG WATCHER — mirrors handleGameOutput() in Dart
         logged_in  = False
         match_over = False
 
@@ -1862,19 +1910,16 @@ class RebootLauncherApp(ctk.CTk):
                     break
 
                 # --- Login completed → late injections ---
-                # Older builds: ContinueLoggingIn+(Completed) on same line
                 # Newer builds (Ch4+): "LogOnline: Region " after login
                 if not logged_in and (all(k in line for k in _LOGGED_IN_LINES) or _LOGGED_IN_REGION in line):
                     logged_in = True
                     print("[+] Login detected — performing late injections...")
 
-                    # Memory leak DLL: Chapter 1 only (major < 10), mirrors _isChapterOne()
                     if major_version < 10 and dll_memory and os.path.exists(dll_memory):
                         ok = self.python_injector(target_pid, dll_memory)
                         print(f"[+] Memory inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_memory)})")
 
                     if is_host:
-                        # Kill whatever is on the game server port before injecting reboot.dll
                         port_str = self.host_port_var.get().strip()
                         if port_str.isdigit():
                             _kill_port(int(port_str))
@@ -1911,7 +1956,6 @@ class RebootLauncherApp(ctk.CTk):
                     if self.host_autorun_var.get():
                         print(f"[*] Auto-restart in {_REBOOT_DELAY_SECS}s...")
                         time.sleep(_REBOOT_DELAY_SECS)
-                        # Kill current instance then relaunch on the UI thread
                         try:
                             proc.kill()
                         except Exception:
@@ -1929,14 +1973,11 @@ class RebootLauncherApp(ctk.CTk):
         except Exception as e:
             print(f"[-] Log stream error: {e}")
 
-        # Wait for the process to actually terminate so UI stays as "Stop Client/Server" 
-        # instead of reverting immediately if the stdout stream closes early.
         try:
             proc.wait()
         except Exception:
             pass
 
-        # 3. Cleanup: kill suspended EAC/Launcher processes
         for pid in paused_pids:
             try:
                 os.kill(pid, 9)
@@ -1944,16 +1985,15 @@ class RebootLauncherApp(ctk.CTk):
             except Exception:
                 pass
 
-        # 4. Revert UI
         def _revert():
             if is_host:
                 self.host_process = None
                 if hasattr(self, 'host_btn'):
-                    self.host_btn.configure(text="Host Server", fg_color="#3b82f6", hover_color="#2563eb")
+                    self.host_btn.configure(text="Host Server", fg_color=_T["accent"], hover_color=_T["accent_hover"])
             else:
                 self.game_process = None
                 if hasattr(self, 'launch_btn'):
-                    self.launch_btn.configure(text="Play", fg_color="#3b82f6", hover_color="#2563eb")
+                    self.launch_btn.configure(text="Play", fg_color=_T["accent"], hover_color=_T["accent_hover"])
 
             any_running = (
                 (hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None) or
