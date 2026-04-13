@@ -1313,7 +1313,7 @@ class RebootLauncherApp(ctk.CTk):
                           font=("Segoe UI", 12),
                           command=lambda t=tag: webbrowser.open(_RELEASES_BASE + t)).pack(side="right")
 
-        ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games  ·  powered by CustomTkinter",
+        ctk.CTkLabel(parent, text="made by Ducki67  ·  Reboot.py is not affiliated with Epic Games  ·  powered by CustomTkinter",
                      text_color="#3f3f46", font=("Segoe UI", 11)).pack(pady=30)
 
     def build_settings_page(self, parent):
