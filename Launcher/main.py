@@ -237,7 +237,7 @@ _TELLURIUM_URL       = "http://r2.ploosh.dev/Tellurium.dll"
 _REBOOT_DLL_URL      = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip" # credits to Milxnor <3
 _ERBIUM_URL          = "https://nightly.link/plooshi/Erbium/workflows/Build/main/Erbium.zip" # credits to plooshi <3
 _ERBIUM_CLIENT_URL   = "https://nightly.link/plooshi/Erbium/workflows/Build/main/ErbiumClient.zip" # credits to plooshi <3
-_LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
+_LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to Twin1 & Cipher <3
 
 _DLL_AUTH_PRESETS = {
     "Tellurium 3551":      ("Tellurium.dll",  None, _TELLURIUM_URL, False),
@@ -1437,7 +1437,7 @@ class RebootLauncherApp(ctk.CTk):
                  self.dll_server_var,  presets=_DLL_SERVER_PRESETS,  choice_var=self.dll_server_choice_var)
         dll_tile("Memory patcher",           "Prevents the client from crashing due to a memory leak",
                  self.dll_memory_var)
-        dll_tile("LargePakPatch",            "Inject after login for custom PAK mods",
+        dll_tile("LargePakPatch",            "Inject after login for custom PAK mods — by Twin1 & Cipher",
                  self.dll_large_pak_var, download_url=_LARGE_PAK_URL)
 
     def build_accountsettings_page(self, parent):
