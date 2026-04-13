@@ -54,10 +54,10 @@ DEFAULT_CONFIG = {
     "path": "",
     "builds": [],
     "dll_console": os.path.join(os.getcwd(), "dlls", "console.dll"),
-    "dll_auth": os.path.join(os.getcwd(), "dlls", "cobalt.dll"),
+    "dll_auth": os.path.join(os.getcwd(), "dlls", "Tellurium.dll"),
     "dll_memory": os.path.join(os.getcwd(), "dlls", "memory.dll"),
     "dll_server": os.path.join(os.getcwd(), "dlls", "reboot.dll"),
-    "dll_auth_choice": "Cobalt",
+    "dll_auth_choice": "Tellurium 3551",
     "dll_console_choice": "Console",
     "dll_server_choice": "Reboot",
     "backend_path": "assets/backend/lawinserver.exe",
@@ -550,7 +550,7 @@ class RebootLauncherApp(ctk.CTk):
         self.dll_auth_var = ctk.StringVar(value=self.settings.get("dll_auth", ""))
         self.dll_memory_var = ctk.StringVar(value=self.settings.get("dll_memory", ""))
         self.dll_server_var = ctk.StringVar(value=self.settings.get("dll_server", ""))
-        self.dll_auth_choice_var    = ctk.StringVar(value=self.settings.get("dll_auth_choice", "Cobalt"))
+        self.dll_auth_choice_var    = ctk.StringVar(value=self.settings.get("dll_auth_choice", "Tellurium 3551"))
         self.dll_console_choice_var = ctk.StringVar(value=self.settings.get("dll_console_choice", "Console"))
         self.dll_server_choice_var  = ctk.StringVar(value=self.settings.get("dll_server_choice", "Reboot"))
         self.username_var = ctk.StringVar(value=self.settings.get("username", "PythonPlayer"))
@@ -1773,7 +1773,7 @@ class RebootLauncherApp(ctk.CTk):
                     print(f"[!] {name} not found — place it in the dlls folder manually")
 
         _auth_fn, _auth_zip, _auth_dir, _auth_nd = _DLL_AUTH_PRESETS.get(
-            self.dll_auth_choice_var.get(), _DLL_AUTH_PRESETS["Cobalt"])
+            self.dll_auth_choice_var.get(), _DLL_AUTH_PRESETS["Tellurium 3551"])
         _ensure(self.dll_auth_var, _auth_fn, zip_url=_auth_zip, direct_url=_auth_dir, no_download=_auth_nd)
 
         _con_fn, _con_zip, _con_dir, _con_nd = _DLL_CONSOLE_PRESETS.get(
