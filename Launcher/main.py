@@ -486,20 +486,17 @@ def _download_dll(name, dest_path, zip_url=None, direct_url=None, force=False):
     _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
         if zip_url:
-            tmp = dest_path + ".zip"
+            import io
             print(f"[*] Downloading {name} from nightly...")
             req = urllib.request.Request(zip_url, headers=_headers)
-            with urllib.request.urlopen(req) as r, open(tmp, "wb") as f:
-                f.write(r.read())
-            with zipfile.ZipFile(tmp, 'r') as z:
+            with urllib.request.urlopen(req) as r:
+                data = io.BytesIO(r.read())
+            with zipfile.ZipFile(data, 'r') as z:
                 for member in z.namelist():
                     if member.lower().endswith('.dll'):
-                        z.extract(member, os.path.dirname(dest_path))
-                        extracted = os.path.join(os.path.dirname(dest_path), member)
-                        if extracted != dest_path:
-                            os.rename(extracted, dest_path)
+                        with z.open(member) as src, open(dest_path, "wb") as dst:
+                            dst.write(src.read())
                         break
-            os.remove(tmp)
         else:
             url = direct_url if direct_url else (_DLL_BASE_URL + name)
             print(f"[*] Downloading {name}...")
