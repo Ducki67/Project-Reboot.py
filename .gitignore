@@ -1,0 +1,45 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ========================
+# Virtual environments
+# ========================
+venv/
+.venv/
+env/
+ENV/
+
+# ========================
+# Config (contains user paths/credentials)
+# ========================
+Launcher/config.json
+
+# ========================
+# Build output (PyInstaller / Nuitka)
+# ========================
+*.exe
+*.spec
+Launcher/dist/
+Launcher/build/
+
+# ========================
+# OS junk
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# Keep example config
+# ========================
+!Launcher/config.example.json
