@@ -479,18 +479,21 @@ def _start_proxy(target_url):
     return srv
 
 
-def _download_dll(name, dest_path, zip_url=None, direct_url=None):
+def _download_dll(name, dest_path, zip_url=None, direct_url=None, force=False):
     """Download a DLL from GitHub."""
-    if os.path.exists(dest_path):
+    if os.path.exists(dest_path) and not force:
         return True
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
         if zip_url:
             import tempfile
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
                 tmp = tf.name
             print(f"[*] Downloading {name} from nightly...")
-            urllib.request.urlretrieve(zip_url, tmp)
+            req = urllib.request.Request(zip_url, headers=_headers)
+            with urllib.request.urlopen(req) as r, open(tmp, "wb") as f:
+                f.write(r.read())
             with zipfile.ZipFile(tmp, 'r') as z:
                 for member in z.namelist():
                     if member.lower().endswith('.dll'):
@@ -500,13 +503,12 @@ def _download_dll(name, dest_path, zip_url=None, direct_url=None):
                             os.rename(extracted, dest_path)
                         break
             os.remove(tmp)
-        elif direct_url:
-            print(f"[*] Downloading {name}...")
-            urllib.request.urlretrieve(direct_url, dest_path)
         else:
-            url = _DLL_BASE_URL + name
+            url = direct_url if direct_url else (_DLL_BASE_URL + name)
             print(f"[*] Downloading {name}...")
-            urllib.request.urlretrieve(url, dest_path)
+            req = urllib.request.Request(url, headers=_headers)
+            with urllib.request.urlopen(req) as r, open(dest_path, "wb") as f:
+                f.write(r.read())
         print(f"[+] Downloaded {name}")
         return True
     except Exception as e:
@@ -1420,7 +1422,7 @@ class RebootLauncherApp(ctk.CTk):
                     if not fn2: return
                     dest = os.path.join(self.base_dir, "dlls", fn2)
                     def _run():
-                        _download_dll(fn2, dest, zip_url=z2, direct_url=d2)
+                        _download_dll(fn2, dest, zip_url=z2, direct_url=d2, force=True)
                         path_var.set(dest)
                     threading.Thread(target=_run, daemon=True).start()
                 ctk.CTkButton(bot, text="↺", width=32, height=32, fg_color=_T["muted"],
