@@ -866,12 +866,12 @@ class RebootLauncherApp(ctk.CTk):
         Called every time a page is shown so switching tabs never resets the button."""
         is_client  = hasattr(self, 'game_process') and self.game_process and self.game_process.poll() is None
         is_hosting = hasattr(self, 'host_process')  and self.host_process  and self.host_process.poll()  is None
-        if hasattr(self, 'launch_btn'):
+        if hasattr(self, 'launch_btn') and self.launch_btn.winfo_exists():
             if is_client:
                 self.launch_btn.configure(text="Stop Client", fg_color="#ef4444", hover_color="#dc2626")
             else:
                 self.launch_btn.configure(text="Play",        fg_color=_T["accent"], hover_color=_T["accent_hover"])
-        if hasattr(self, 'host_btn'):
+        if hasattr(self, 'host_btn') and self.host_btn.winfo_exists():
             if is_hosting:
                 self.host_btn.configure(text="Stop Server", fg_color="#ef4444", hover_color="#dc2626")
             else:
@@ -981,18 +981,23 @@ class RebootLauncherApp(ctk.CTk):
             else:
                 self.downloads_container.grid_columnconfigure((0, 1, 2), weight=0)
 
+            _DOWN_VERSIONS = {"3.6", "3.60"}  # builds.rebootfn.org links currently down
             for idx, url in enumerate(sorted_versions):
                 filename    = urllib.parse.unquote(url.split('/')[-1])
                 version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
                 parts    = get_version_tuple(url)
                 is_valid = not (parts and (parts[0] > 10 or (parts[0] == 10 and len(parts) > 1 and parts[1] > 31)))
+                is_down  = version_str in _DOWN_VERSIONS
                 tile     = ctk.CTkFrame(self.downloads_container, fg_color=_T["nav_active"], corner_radius=8)
 
                 if view_mode == "List View":
                     tile.pack(fill="x", pady=4, padx=5)
                     ctk.CTkLabel(tile, text=f"Version {version_str}", font=("Segoe UI", 15, "bold"),
-                                 text_color="white" if is_valid else "#52525b").pack(side="left", padx=15, pady=15)
-                    if is_valid:
+                                 text_color="white" if (is_valid and not is_down) else "#52525b").pack(side="left", padx=15, pady=15)
+                    if is_down:
+                        ctk.CTkButton(tile, text="Link Down", width=100,
+                                      fg_color="#7f1d1d", hover_color="#7f1d1d", state="disabled").pack(side="right", padx=15)
+                    elif is_valid:
                         info_frame = ctk.CTkFrame(tile, fg_color="transparent")
                         info_frame.pack(side="right", padx=15, fill="x", expand=True)
                         prog_bar  = ctk.CTkProgressBar(info_frame, width=180, height=8, progress_color=_T["accent_hover"], fg_color=_T["muted"])
@@ -1010,8 +1015,11 @@ class RebootLauncherApp(ctk.CTk):
                     r, c = idx // columns, idx % columns
                     tile.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
                     ctk.CTkLabel(tile, text=f"v{version_str}", font=("Segoe UI", 18, "bold"),
-                                 text_color="white" if is_valid else "#52525b").pack(pady=(15, 5))
-                    if is_valid:
+                                 text_color="white" if (is_valid and not is_down) else "#52525b").pack(pady=(15, 5))
+                    if is_down:
+                        ctk.CTkButton(tile, text="Link Down", width=100,
+                                      fg_color="#7f1d1d", hover_color="#7f1d1d", state="disabled").pack(pady=(5, 15))
+                    elif is_valid:
                         prog_bar = ctk.CTkProgressBar(tile, width=140, height=8, progress_color=_T["accent"], fg_color=_T["muted"])
                         prog_bar.set(0)
                         stat_lbl = ctk.CTkLabel(tile, text="", font=("Segoe UI", 10), text_color="#a1a1aa")
@@ -1259,8 +1267,9 @@ class RebootLauncherApp(ctk.CTk):
         ctk.CTkLabel(hero, text="Reboot.py", font=("Segoe UI", 26, "bold"), text_color=_T["accent"]).pack(pady=(22, 2))
         ctk.CTkLabel(hero, text="v1.2  ·  The most lightweight way to play legacy Fortnite", font=("Segoe UI", 12), text_color="#71717a").pack()
 
-        commit_lbl_var = ctk.StringVar(value="latest commit: fetching...")
-        ctk.CTkLabel(hero, textvariable=commit_lbl_var, font=("Segoe UI", 11), text_color="#52525b").pack(pady=(2, 0))
+        commit_lbl_var = ctk.StringVar(value="")
+        commit_lbl = ctk.CTkLabel(hero, textvariable=commit_lbl_var, font=("Segoe UI", 11), text_color="#52525b")
+        commit_lbl.pack(pady=(2, 0))
 
         def _fetch_commit():
             try:
@@ -1272,9 +1281,9 @@ class RebootLauncherApp(ctk.CTk):
                     data = json.loads(r.read().decode())
                 sha = data["sha"][:7]
                 msg = data["commit"]["message"].splitlines()[0]
-                commit_lbl_var.set(f"latest commit: #{sha} — {msg}")
+                commit_lbl_var.set(f"#{sha} — {msg}")
             except Exception:
-                commit_lbl_var.set("latest commit: unavailable")
+                commit_lbl.pack_forget()
 
         threading.Thread(target=_fetch_commit, daemon=True).start()
         btn_row = ctk.CTkFrame(hero, fg_color="transparent")
@@ -1284,49 +1293,7 @@ class RebootLauncherApp(ctk.CTk):
         ctk.CTkButton(btn_row, text="GitHub", fg_color="#24292e", hover_color="#1a1f24", width=110, height=32, corner_radius=6,
                       command=lambda: webbrowser.open("https://github.com/Ducki67/Project-Reboot.py")).pack(side="left", padx=8)
 
-        # --- Changelog (links to GitHub Releases) ---
-        ctk.CTkLabel(parent, text="Releases", font=("Segoe UI", 18, "bold"), text_color=_T["text"], anchor="w").pack(fill="x", pady=(8, 6))
-
-        _RELEASES_BASE = "https://github.com/Ducki67/Project-Reboot.py/releases/tag/"
-        releases = [
-            ("v1.2", "Current", _T["accent"],   "Multi-theme system, DLL preset selection, lazy page loading, scrollbar fixes"),
-            ("v1.1", "",        "#71717a",       "Discord RPC, season-aware images, UE5 version detection, LargePakPatch, S20+ login fix"),
-            ("v1.0", "",        "#52525b",       "Initial release — DLL injection, backend proxy, build downloader, headless server mode"),
-        ]
-
-        for tag, badge, accent, summary in releases:
-            card = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=8)
-            card.pack(fill="x", pady=5)
-
-            inner = ctk.CTkFrame(card, fg_color="transparent")
-            inner.pack(fill="x", padx=16, pady=14)
-
-            left = ctk.CTkFrame(inner, fg_color="transparent")
-            left.pack(side="left", fill="x", expand=True)
-
-            title_row = ctk.CTkFrame(left, fg_color="transparent")
-            title_row.pack(fill="x")
-
-            dot = ctk.CTkFrame(title_row, fg_color=accent, width=10, height=10, corner_radius=5)
-            dot.pack(side="left", padx=(0, 8), pady=3)
-            dot.pack_propagate(False)
-
-            ctk.CTkLabel(title_row, text=tag, font=("Segoe UI", 14, "bold"), text_color=_T["text"]).pack(side="left")
-
-            if badge:
-                badge_lbl = ctk.CTkLabel(title_row, text=f" {badge}", font=("Segoe UI", 11, "bold"),
-                                         text_color=accent, fg_color="transparent")
-                badge_lbl.pack(side="left", padx=(6, 0))
-
-            ctk.CTkLabel(left, text=summary, font=("Segoe UI", 12), text_color=_T["subtext"],
-                         anchor="w", wraplength=580, justify="left").pack(fill="x", pady=(4, 0))
-
-            ctk.CTkButton(inner, text="View on GitHub", width=130, height=32, corner_radius=6,
-                          fg_color=_T["muted"], hover_color=_T["muted_hover"], text_color=_T["text"],
-                          font=("Segoe UI", 12),
-                          command=lambda t=tag: webbrowser.open(_RELEASES_BASE + t)).pack(side="right")
-
-        ctk.CTkLabel(parent, text="made by Ducki67  ·  Reboot.py is not affiliated with Epic Games  ·  powered by CustomTkinter",
+        ctk.CTkLabel(parent, text="Reboot.py is not affiliated with Epic Games  ·  made by: Ducki67 (@ducki67 on discord)",
                      text_color="#3f3f46", font=("Segoe UI", 11)).pack(pady=30)
 
     def build_settings_page(self, parent):
