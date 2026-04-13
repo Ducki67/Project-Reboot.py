@@ -74,7 +74,8 @@ DEFAULT_CONFIG = {
     "rpc_enabled": True,
     "dll_large_pak": "",
     "use_large_pak": False,
-    "theme": "Dark"
+    "theme": "Dark",
+    "language": "English"
 }
 
 class DiscordManager:
@@ -820,24 +821,49 @@ class RebootLauncherApp(ctk.CTk):
         search_f = ctk.CTkFrame(self.sidebar, fg_color=_T["nav_active"], corner_radius=6, height=35)
         search_f.pack(pady=15, padx=20, fill="x")
         search_f.pack_propagate(False)
-        ctk.CTkEntry(search_f, placeholder_text="Find a setting", border_width=0, fg_color="transparent", text_color="#d4d4d8").pack(side="left", fill="both", expand=True, padx=5)
+        self.search_var = ctk.StringVar()
+        search_entry = ctk.CTkEntry(search_f, placeholder_text="Find a setting", border_width=0, fg_color="transparent", text_color="#d4d4d8", textvariable=self.search_var)
+        search_entry.pack(side="left", fill="both", expand=True, padx=5)
+
+        # Nav buttons in a frame using grid to keep order stable
+        nav_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        nav_frame.pack(fill="x")
 
         self.nav_btns = {}
         nav_items = ["Play", "Download", "Host", "Backend", "Info", "Settings"]
-        for item in nav_items:
+        # Keywords that map to each page for smart search
+        _NAV_KEYWORDS = {
+            "Play":     ["play", "launch", "start", "game", "client"],
+            "Download": ["download", "build", "version", "install"],
+            "Host":     ["host", "server", "gameserver", "port", "headless"],
+            "Backend":  ["backend", "lawin", "local", "remote", "proxy"],
+            "Info":     ["info", "about", "credits", "github", "discord"],
+            "Settings": ["settings", "config", "dll", "erbium", "tellurium", "cobalt", "auth", "console", "memory",
+                         "largepak", "theme", "account", "username", "email", "password", "discord", "rpc", "internal"],
+        }
+        for idx, item in enumerate(nav_items):
             img_path = os.path.join(self.base_dir, "assets", "images", f"{item.lower()}.png")
             if HAS_PIL and os.path.exists(img_path):
                 btn_img = ctk.CTkImage(light_image=Image.open(img_path), size=(20, 20))
-                btn = ctk.CTkButton(self.sidebar, text=f"  {item}", image=btn_img, anchor="w", fg_color="transparent",
+                btn = ctk.CTkButton(nav_frame, text=f"  {item}", image=btn_img, anchor="w", fg_color="transparent",
                                     hover_color=_T["nav_active"], font=("Segoe UI", 14), corner_radius=6, height=38,
                                     command=lambda n=item: self.show_page(n))
             else:
-                btn = ctk.CTkButton(self.sidebar, text=f"   {item}", anchor="w", fg_color="transparent",
+                btn = ctk.CTkButton(nav_frame, text=f"   {item}", anchor="w", fg_color="transparent",
                                     hover_color=_T["nav_active"], font=("Segoe UI", 14), corner_radius=6, height=38,
                                     command=lambda n=item: self.show_page(n))
-            
-            btn.pack(fill="x", padx=15, pady=2)
+
+            btn.grid(row=idx, column=0, sticky="ew", padx=15, pady=2)
             self.nav_btns[item] = btn
+        nav_frame.grid_columnconfigure(0, weight=1)
+
+        def _filter_nav(*_):
+            q = self.search_var.get().lower().strip()
+            for name, btn in self.nav_btns.items():
+                keywords = _NAV_KEYWORDS.get(name, [])
+                match = not q or q in name.lower() or any(q in kw for kw in keywords)
+                btn.configure(fg_color=_T["nav_active"] if (q and match) else "transparent")
+        self.search_var.trace_add("write", _filter_nav)
 
     def setup_pages(self):
         self.pages_frame = ctk.CTkFrame(self, fg_color=_T["content"], corner_radius=0)
@@ -1302,7 +1328,6 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Account options", "Configure your mock username and password", button_text=">", is_subpage=True, button_command=lambda: self.show_page("AccountSettings"))
         SettingTile(parent, "Discord Activity", "Show your status playing Reboot on Discord", is_switch=True, switch_var=self.rpc_enabled_var)
         SettingTile(parent, "LargePakPatch", "Inject LargePakPatch.dll after login for custom mods — auto-downloads from Atlas Link", is_switch=True, switch_var=self.use_large_pak_var)
-        SettingTile(parent, "Language", "Select the language to use inside the launcher", button_text="English")
         SettingTile(parent, "Theme", "Select the theme to use inside the launcher",
                     is_option=True, option_var=self.theme_var,
                     options_list=list(_THEMES.keys()))
