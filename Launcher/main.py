@@ -1007,7 +1007,20 @@ class RebootLauncherApp(ctk.CTk):
             else:
                 self.downloads_container.grid_columnconfigure((0, 1, 2), weight=0)
 
-            _DOWN_VERSIONS = {"3.6", "3.60"}  # builds.rebootfn.org links currently down
+            _DOWN_VERSIONS = {
+                "3.6", "3.60",
+                "10.40",
+                "11.00", "11.31",
+                "12.00", "12.21", "12.41", "12.50", "12.61",
+                "13.00", "13.40",
+                "14.00", "14.40", "14.60",
+                "15.30",
+                "16.40",
+                "17.30", "17.50",
+                "18.40",
+                "19.10",
+                "20.40",
+            }  # builds.rebootfn.org links currently down
             for idx, url in enumerate(sorted_versions):
                 filename    = urllib.parse.unquote(url.split('/')[-1])
                 version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
