@@ -233,7 +233,6 @@ def _rpc_image(build_ver: str) -> str:
     return "fortnite_noseason"
 
 _DLL_BASE_URL        = "https://github.com/Auties00/reboot_launcher/raw/master/gui/dependencies/dlls/"
-_COBALT_URL          = _DLL_BASE_URL + "cobalt.dll"
 _TELLURIUM_URL       = "http://r2.ploosh.dev/Tellurium.dll"
 _REBOOT_DLL_URL      = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip" # credits to Milxnor <3
 _ERBIUM_URL          = "https://nightly.link/plooshi/Erbium/workflows/Build/main/Erbium.zip" # credits to plooshi <3
@@ -241,9 +240,8 @@ _ERBIUM_CLIENT_URL   = "https://nightly.link/plooshi/Erbium/workflows/Build/main
 _LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
 
 _DLL_AUTH_PRESETS = {
-    "Cobalt":              ("cobalt.dll",              None,              _COBALT_URL,     False),
-    "Tellurium 3551":      ("Tellurium.dll",            None,              _TELLURIUM_URL,  False),
-    "Tellurium Push 3551": ("Tellurium.dll",            None,              _TELLURIUM_URL,  False),
+    "Tellurium 3551":      ("Tellurium.dll",  None, _TELLURIUM_URL, False),
+    "Tellurium Push 3551": ("Tellurium.dll",  None, _TELLURIUM_URL, False),
 }
 _DLL_CONSOLE_PRESETS = {
     "Console":       ("console.dll",     None,              None,              False),
@@ -1295,7 +1293,7 @@ class RebootLauncherApp(ctk.CTk):
 
         _RELEASES_BASE = "https://github.com/Ducki67/Project-Reboot.py/releases/tag/"
         releases = [
-            ("v1.2", "Current", _T["accent"],   "Multi-theme system, DLL preset selection (Cobalt/Erbium), lazy page loading, scrollbar fixes"),
+            ("v1.2", "Current", _T["accent"],   "Multi-theme system, DLL preset selection, lazy page loading, scrollbar fixes"),
             ("v1.1", "",        "#71717a",       "Discord RPC, season-aware images, UE5 version detection, LargePakPatch, S20+ login fix"),
             ("v1.0", "",        "#52525b",       "Initial release — DLL injection, backend proxy, build downloader, headless server mode"),
         ]
@@ -1356,7 +1354,7 @@ class RebootLauncherApp(ctk.CTk):
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Settings > Internal files", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
-        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Tellurium (default), Cobalt for older builds",
+        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Tellurium 3551 or Tellurium Push 3551",
                     is_option=True, option_var=self.dll_auth_choice_var,
                     options_list=list(_DLL_AUTH_PRESETS.keys()))
         SettingTile(parent, "Unreal engine patcher", "Unlocks the Unreal Engine Console — use Erbium Client for Ch3+",
