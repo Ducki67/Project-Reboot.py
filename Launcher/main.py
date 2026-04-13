@@ -17,7 +17,6 @@ try:
 except ImportError:
     HAS_RPC = False
 
-# --- WINAPI KONSTANSOK & DEFINICIÓK ---
 PROCESS_ALL_ACCESS = (0x000F0000 | 0x00100000 | 0xFFF)
 MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
@@ -42,7 +41,6 @@ k32.GetProcAddress.argtypes = [wintypes.HANDLE, c_char_p]
 k32.CreateRemoteThread.restype = wintypes.HANDLE
 k32.CreateRemoteThread.argtypes = [wintypes.HANDLE, c_void_p, c_size_t, c_void_p, c_void_p, wintypes.DWORD, wintypes.LPDWORD]
 
-# --- APP CONFIG ---
 CONFIG_PATH = "config.json"
 DEFAULT_CONFIG = {
     "username": "PythonPlayer",
@@ -74,8 +72,7 @@ DEFAULT_CONFIG = {
     "rpc_enabled": True,
     "dll_large_pak": "",
     "use_large_pak": False,
-    "theme": "Dark",
-    "language": "English"
+    "theme": "Dark"
 }
 
 class DiscordManager:
@@ -129,7 +126,6 @@ class DiscordManager:
                 self.rpc.clear()
             except Exception as e: print('RPC Error:', e)
 
-# --- UI TILE COMPONENT ---
 class SettingTile(ctk.CTkFrame):
     def __init__(self, parent, title, subtitle, button_text=None, button_command=None, show_entry=False, entry_var=None, is_subpage=False, is_switch=False, switch_var=None, is_option=False, option_var=None, options_list=None, button_text_var=None):
         super().__init__(parent, fg_color="transparent")
@@ -172,8 +168,6 @@ class SettingTile(ctk.CTkFrame):
              ent = ctk.CTkEntry(container, fg_color=_T["tile_deep"], border_width=1, border_color=_T["border"], text_color="#ffffff", font=("Segoe UI", 13), height=34, corner_radius=4, textvariable=entry_var)
              ent.pack(side="right", fill="x", expand=True, padx=(20, 20))
 
-# --- REBOOT CONSTANTS ---
-# Newer builds (Ch4+, S20+) emit "LogOnline: Region " after login completes.
 _LOGGED_IN_LINES   = ["[UOnlineAccountCommon::ContinueLoggingIn]", "(Completed)"]
 _LOGGED_IN_REGION  = "LogOnline: Region "
 _SHUTDOWN_LINE     = "FOnlineSubsystemGoogleCommon::Shutdown()"
@@ -930,7 +924,6 @@ class RebootLauncherApp(ctk.CTk):
         self.save_config()
         self.update_discord_rpc_state(active_nav=active_nav)
 
-    # --- PAGES ---
 
     def build_play_page(self, parent):
         ctk.CTkLabel(parent, text="Play", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
@@ -1020,7 +1013,7 @@ class RebootLauncherApp(ctk.CTk):
                 "18.40",
                 "19.10",
                 "20.40",
-            }  # builds.rebootfn.org links currently down
+            }
             for idx, url in enumerate(sorted_versions):
                 filename    = urllib.parse.unquote(url.split('/')[-1])
                 version_str = filename.replace('.zip','').replace('.rar','').replace('vFortnite ','').replace('vFortnite','').replace('Fortnite ','').replace('Fortnite','').strip()
@@ -1300,7 +1293,6 @@ class RebootLauncherApp(ctk.CTk):
         import webbrowser
         ctk.CTkLabel(parent, text="Info", font=("Segoe UI", 32, "bold"), text_color="white", anchor="w").pack(fill="x", pady=(0, 20))
 
-        # --- Hero banner ---
         hero = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=10)
         hero.pack(fill="x", pady=(0, 16))
         ctk.CTkLabel(hero, text="Reboot.py", font=("Segoe UI", 26, "bold"), text_color=_T["accent"]).pack(pady=(22, 2))
@@ -1455,7 +1447,6 @@ class RebootLauncherApp(ctk.CTk):
         SettingTile(parent, "Host Email", "Account email for host", show_entry=True, entry_var=self.host_email_var)
         SettingTile(parent, "Host Password", "Account password for host", show_entry=True, entry_var=self.host_account_password_var)
 
-    # --- ACTION LOGIC ---
 
     def remove_build(self):
         selected = self.path_var.get()
@@ -1677,7 +1668,6 @@ class RebootLauncherApp(ctk.CTk):
                     pass
             return b, c
 
-        # --- Try win32api on CrashReportClient.exe first ---
         if crc_exe:
             try:
                 import win32api
@@ -1723,7 +1713,6 @@ class RebootLauncherApp(ctk.CTk):
             except Exception:
                 pass
 
-        # --- Last resort: win32api on the shipping exe itself ---
         try:
             import win32api
             lang, cp = win32api.GetFileVersionInfo(exe_path, r'\VarFileInfo\Translation')[0]
@@ -1737,7 +1726,6 @@ class RebootLauncherApp(ctk.CTk):
         except Exception:
             pass
 
-        # --- Path-based fallback: parse version from directory names in the exe path ---
         if build == "Unknown":
             for part in reversed(exe_path.replace('\\', '/').split('/')):
                 m = re.search(r'(?:^|v|Fortnite[\s_]?v?)(\d+\.\d+(?:\.\d+)?)', part, re.IGNORECASE)
@@ -1768,7 +1756,6 @@ class RebootLauncherApp(ctk.CTk):
             print(f"[-] Could not patch headless mode binary: {e}")
 
     def handle_launch(self, is_host=False):
-        # --- Toggle: stop if already running ---
         if is_host:
             if hasattr(self, 'host_process') and self.host_process and self.host_process.poll() is None:
                 self.host_process.kill()
@@ -1780,7 +1767,6 @@ class RebootLauncherApp(ctk.CTk):
 
         self.save_config()
 
-        # --- Resolve exe path from build list ---
         selected_name = self.path_var.get()
         exe_path = selected_name
         for b in getattr(self, "builds", []):
@@ -1794,17 +1780,14 @@ class RebootLauncherApp(ctk.CTk):
 
         bin_dir = os.path.dirname(exe_path)
 
-        # --- Port conflict check: game server port must not be 3551 ---
         game_port = self.host_port_var.get().strip()
         if is_host and game_port == "3551":
             messagebox.showerror("Error", "Game server port cannot be 3551 (conflicts with backend).\nChange it in Host > Options.")
             return
 
-        # --- Headless binary patch ---
         if is_host and self.host_headless_var.get():
             self.patch_headless(exe_path)
 
-        # --- Delete Aftermath crash DLL ---
         aftermath = os.path.join(bin_dir, "GFSDK_Aftermath_Lib.x64.dll")
         if os.path.exists(aftermath):
             try:
@@ -1813,11 +1796,9 @@ class RebootLauncherApp(ctk.CTk):
             except Exception as e:
                 print(f"[-] Could not delete Aftermath DLL: {e}")
 
-        # --- Write matchmaking IP to config.ini when hosting ---
         if is_host:
             _write_matchmaker_config(self.base_dir, "127.0.0.1", game_port or "7777")
 
-        # --- Detect game major version + cache build info for RPC ---
         _bv, _cl = self.get_game_version(exe_path)
         self._rpc_build_ver = _bv
         self._rpc_cl_ver    = _cl
@@ -1828,7 +1809,6 @@ class RebootLauncherApp(ctk.CTk):
             pass
         print(f"[*] Version detected: build={_bv}  CL={_cl}  major_version={major_version}  rpc_image={_rpc_image(_bv)}")
 
-        # --- Auto-download missing DLLs ---
         dll_dir = os.path.join(self.base_dir, "dlls")
         def _ensure(var, name, zip_url=None, direct_url=None, no_download=False):
             p = var.get()
@@ -1859,7 +1839,6 @@ class RebootLauncherApp(ctk.CTk):
         if self.use_large_pak_var.get():
             _ensure(self.dll_large_pak_var, "LargePakPatch.dll", direct_url=_LARGE_PAK_URL)
 
-        # --- Build auth args using Dart-identical logic ---
         if is_host:
             username = self.settings.get("host_username", "Host")
             password = self.settings.get("host_account_password", "")
@@ -1884,7 +1863,6 @@ class RebootLauncherApp(ctk.CTk):
         launch_cmd = [exe_path] + args_list
         launch_env = os.environ.copy()
         launch_env["OPENSSL_ia32cap"] = "~0x20000000"   #
-        # --- Start FortniteLauncher.exe and EAC exe SUSPENDED (bypass EAC) ---
         game_root = bin_dir
         for _ in range(4):
             game_root = os.path.dirname(game_root)
@@ -1917,7 +1895,6 @@ class RebootLauncherApp(ctk.CTk):
             except Exception as e:
                 print(f"[-] Could not suspend {suspended_name}: {e}")
 
-        # --- Start the actual game process ---
         proc = subprocess.Popen(
             launch_cmd,
             cwd=bin_dir,
@@ -1976,12 +1953,10 @@ class RebootLauncherApp(ctk.CTk):
                 if stripped:
                     print("[FN] " + stripped)
 
-                # --- Graceful shutdown ---
                 if _SHUTDOWN_LINE in line:
                     print("[*] Detected graceful shutdown.")
                     break
 
-                # --- Corrupted build / crash ---
                 if any(e in line for e in _CORRUPTED_ERRORS):
                     print("[-] Corrupted build or crash detected.")
                     self.after(0, lambda: messagebox.showerror(
@@ -1990,7 +1965,6 @@ class RebootLauncherApp(ctk.CTk):
                         "Try verifying your game files."))
                     break
 
-                # --- Cannot connect to backend ---
                 if any(e in line for e in _CONNECT_ERRORS):
                     print("[-] Backend connection error detected.")
                     self.after(0, lambda: messagebox.showerror(
@@ -1999,8 +1973,6 @@ class RebootLauncherApp(ctk.CTk):
                         "Make sure your backend is running before launching."))
                     break
 
-                # --- Login completed → late injections ---
-                # Newer builds (Ch4+): "LogOnline: Region " after login
                 if not logged_in and (all(k in line for k in _LOGGED_IN_LINES) or _LOGGED_IN_REGION in line):
                     logged_in = True
                     print("[+] Login detected — performing late injections...")
@@ -2022,7 +1994,6 @@ class RebootLauncherApp(ctk.CTk):
                             ok = self.python_injector(target_pid, dll_console)
                             print(f"[+] Console inject: {'OK' if ok else 'FAILED'} ({os.path.basename(dll_console)})")
 
-                    # --- LargePakPatch (custom mods) — only supported on builds >5.10 and <14.40 ---
                     if self.use_large_pak_var.get():
                         try:
                             parts = build_ver.split('.')
@@ -2039,7 +2010,6 @@ class RebootLauncherApp(ctk.CTk):
                         else:
                             print(f"[*] LargePakPatch skipped — only supported on builds >5.10 and <14.40 (this build: {build_ver})")
 
-                # --- Match ended (host only) ---
                 if is_host and _MATCH_END_LINE in line and not match_over:
                     match_over = True
                     print("[*] Match ended (TeamsLeft: 1).")
