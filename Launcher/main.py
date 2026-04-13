@@ -1271,6 +1271,45 @@ class RebootLauncherApp(ctk.CTk):
         ctk.CTkButton(btn_row, text="GitHub", fg_color="#24292e", hover_color="#1a1f24", width=110, height=32, corner_radius=6,
                       command=lambda: webbrowser.open("https://github.com/Ducki67/Project-Reboot.py")).pack(side="left", padx=8)
 
+        # --- Latest Commit ---
+        ctk.CTkLabel(parent, text="Latest Commit", font=("Segoe UI", 18, "bold"), text_color=_T["text"], anchor="w").pack(fill="x", pady=(16, 6))
+
+        commit_card = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=8)
+        commit_card.pack(fill="x", pady=(0, 4))
+        commit_inner = ctk.CTkFrame(commit_card, fg_color="transparent")
+        commit_inner.pack(fill="x", padx=16, pady=14)
+
+        commit_sha_var    = ctk.StringVar(value="fetching...")
+        commit_msg_var    = ctk.StringVar(value="")
+        commit_date_var   = ctk.StringVar(value="")
+
+        sha_row = ctk.CTkFrame(commit_inner, fg_color="transparent")
+        sha_row.pack(fill="x")
+        ctk.CTkLabel(sha_row, textvariable=commit_sha_var, font=("Segoe UI Semibold", 13), text_color=_T["accent"]).pack(side="left")
+        ctk.CTkLabel(sha_row, textvariable=commit_date_var, font=("Segoe UI", 11), text_color=_T["subtext"]).pack(side="right")
+        ctk.CTkLabel(commit_inner, textvariable=commit_msg_var, font=("Segoe UI", 12), text_color=_T["subtext"],
+                     anchor="w", wraplength=600, justify="left").pack(fill="x", pady=(4, 0))
+
+        def _fetch_commit():
+            try:
+                req = urllib.request.Request(
+                    "https://api.github.com/repos/Ducki67/Project-Reboot.py/commits/main",
+                    headers={"Accept": "application/vnd.github+json", "User-Agent": "reboot.py-launcher"}
+                )
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    data = json.loads(r.read().decode())
+                sha  = data["sha"][:7]
+                msg  = data["commit"]["message"].splitlines()[0]
+                raw  = data["commit"]["author"]["date"]          # "2025-04-13T15:04:05Z"
+                date = raw[:10]
+                commit_sha_var.set(f"#{sha}")
+                commit_msg_var.set(msg)
+                commit_date_var.set(date)
+            except Exception:
+                commit_sha_var.set("couldn't fetch")
+
+        threading.Thread(target=_fetch_commit, daemon=True).start()
+
         # --- Changelog (links to GitHub Releases) ---
         ctk.CTkLabel(parent, text="Releases", font=("Segoe UI", 18, "bold"), text_color=_T["text"], anchor="w").pack(fill="x", pady=(8, 6))
 
