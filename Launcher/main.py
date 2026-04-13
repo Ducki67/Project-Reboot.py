@@ -240,8 +240,7 @@ _ERBIUM_CLIENT_URL   = "https://nightly.link/plooshi/Erbium/workflows/Build/main
 _LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to Twin1 & Cipher <3
 
 _DLL_AUTH_PRESETS = {
-    "Tellurium 3551":      ("Tellurium.dll",  None, _TELLURIUM_URL, False),
-    "Tellurium Push 3551": ("Tellurium.dll",  None, _TELLURIUM_URL, False),
+    "Tellurium 3551": ("Tellurium.dll", None, _TELLURIUM_URL, False),
 }
 _DLL_CONSOLE_PRESETS = {
     "Console":       ("console.dll",     None,              None,              False),
@@ -487,9 +486,7 @@ def _download_dll(name, dest_path, zip_url=None, direct_url=None, force=False):
     _headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
         if zip_url:
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
-                tmp = tf.name
+            tmp = dest_path + ".zip"
             print(f"[*] Downloading {name} from nightly...")
             req = urllib.request.Request(zip_url, headers=_headers)
             with urllib.request.urlopen(req) as r, open(tmp, "wb") as f:
