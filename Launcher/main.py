@@ -1349,23 +1349,94 @@ class RebootLauncherApp(ctk.CTk):
     def build_internalfiles_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
         header.pack(fill="x", pady=(0, 20))
-        
         back_btn = ctk.CTkButton(header, text="<", width=30, fg_color="transparent", font=("Segoe UI", 18), hover_color=_T["nav_active"], command=lambda: self.show_page("Settings"))
-        back_btn.pack(side="left", padx=(0,10))
+        back_btn.pack(side="left", padx=(0, 10))
         ctk.CTkLabel(header, text="Settings > Internal files", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
-        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Tellurium 3551 or Tellurium Push 3551",
-                    is_option=True, option_var=self.dll_auth_choice_var,
-                    options_list=list(_DLL_AUTH_PRESETS.keys()))
-        SettingTile(parent, "Unreal engine patcher", "Unlocks the Unreal Engine Console — use Erbium Client for Ch3+",
-                    is_option=True, option_var=self.dll_console_choice_var,
-                    options_list=list(_DLL_CONSOLE_PRESETS.keys()))
-        SettingTile(parent, "Game server", "The server DLL injected on launch — use Erbium for Ch3+",
-                    is_option=True, option_var=self.dll_server_choice_var,
-                    options_list=list(_DLL_SERVER_PRESETS.keys()))
-        SettingTile(parent, "Memory patcher", "Prevents the client from crashing because of a memory leak", button_text="Browse", show_entry=True, entry_var=self.dll_memory_var, button_command=lambda: self.browse_dll(self.dll_memory_var))
+        def dll_tile(title, subtitle, path_var, presets=None, choice_var=None, download_url=None):
+            card = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=8)
+            card.pack(fill="x", pady=5)
+            body = ctk.CTkFrame(card, fg_color="transparent")
+            body.pack(fill="x", padx=16, pady=12)
 
-        SettingTile(parent, "LargePakPatch DLL", "Custom path — leave blank to auto-download", button_text="Browse", show_entry=True, entry_var=self.dll_large_pak_var, button_command=lambda: self.browse_dll(self.dll_large_pak_var))
+            # Top row: title/subtitle + preset dropdown
+            top = ctk.CTkFrame(body, fg_color="transparent")
+            top.pack(fill="x", pady=(0, 10))
+            lbl_col = ctk.CTkFrame(top, fg_color="transparent")
+            lbl_col.pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(lbl_col, text=title, font=("Segoe UI", 14, "bold"), text_color=_T["text"], anchor="w").pack(fill="x")
+            ctk.CTkLabel(lbl_col, text=subtitle, font=("Segoe UI", 11), text_color=_T["subtext"], anchor="w").pack(fill="x")
+            if presets and choice_var:
+                opt = ctk.CTkOptionMenu(top, variable=choice_var, values=list(presets.keys()),
+                                        fg_color=_T["muted"], button_color=_T["muted"],
+                                        button_hover_color=_T["muted_hover"], dropdown_fg_color=_T["muted"], width=170)
+                opt.pack(side="right")
+
+            # Bottom row: status dot + path entry + browse + download
+            bot = ctk.CTkFrame(body, fg_color="transparent")
+            bot.pack(fill="x")
+
+            dot = ctk.CTkFrame(bot, width=8, height=8, corner_radius=4,
+                               fg_color="#22c55e" if (path_var.get() and os.path.isfile(path_var.get())) else "#ef4444")
+            dot.pack(side="left", padx=(0, 8), pady=4)
+            dot.pack_propagate(False)
+
+            entry = ctk.CTkEntry(bot, textvariable=path_var, fg_color=_T["tile_deep"],
+                                 border_width=1, border_color=_T["border"],
+                                 text_color="#ffffff", font=("Segoe UI", 11), height=32, corner_radius=4)
+            entry.pack(side="left", fill="x", expand=True)
+
+            def _update_dot(*_):
+                p = path_var.get()
+                dot.configure(fg_color="#22c55e" if (p and os.path.isfile(p)) else "#ef4444")
+            path_var.trace_add("write", _update_dot)
+
+            # When preset changes, resolve new filename into path_var
+            if presets and choice_var:
+                def _on_preset(*_):
+                    fn, _, _, _ = presets.get(choice_var.get(), (None, None, None, True))
+                    if fn:
+                        path_var.set(os.path.join(self.base_dir, "dlls", fn))
+                choice_var.trace_add("write", _on_preset)
+
+            ctk.CTkButton(bot, text="📁", width=32, height=32, fg_color=_T["muted"],
+                          hover_color=_T["muted_hover"], font=("Segoe UI", 14),
+                          command=lambda: self.browse_dll(path_var)).pack(side="left", padx=(6, 0))
+
+            # Determine if downloadable
+            def _get_dl():
+                if presets and choice_var:
+                    fn, z, d, nd = presets.get(choice_var.get(), (None, None, None, True))
+                    if not nd and (z or d):
+                        return fn, z, d
+                if download_url:
+                    return os.path.basename(path_var.get()) or "file.dll", None, download_url
+                return None, None, None
+
+            fn0, _, _ = _get_dl()
+            if fn0 is not None:
+                def _do_download():
+                    fn2, z2, d2 = _get_dl()
+                    if not fn2: return
+                    dest = os.path.join(self.base_dir, "dlls", fn2)
+                    def _run():
+                        _download_dll(fn2, dest, zip_url=z2, direct_url=d2)
+                        path_var.set(dest)
+                    threading.Thread(target=_run, daemon=True).start()
+                ctk.CTkButton(bot, text="↺", width=32, height=32, fg_color=_T["muted"],
+                              hover_color=_T["muted_hover"], font=("Segoe UI", 15),
+                              command=_do_download).pack(side="left", padx=(4, 0))
+
+        dll_tile("Authentication patcher",   "Redirects all HTTP requests to the backend",
+                 self.dll_auth_var,    presets=_DLL_AUTH_PRESETS,    choice_var=self.dll_auth_choice_var)
+        dll_tile("Unreal Engine patcher",    "Unlocks the Unreal Engine console",
+                 self.dll_console_var, presets=_DLL_CONSOLE_PRESETS, choice_var=self.dll_console_choice_var)
+        dll_tile("Game server",              "The server DLL injected into Fortnite on launch",
+                 self.dll_server_var,  presets=_DLL_SERVER_PRESETS,  choice_var=self.dll_server_choice_var)
+        dll_tile("Memory patcher",           "Prevents the client from crashing due to a memory leak",
+                 self.dll_memory_var)
+        dll_tile("LargePakPatch",            "Inject after login for custom PAK mods",
+                 self.dll_large_pak_var, download_url=_LARGE_PAK_URL)
 
     def build_accountsettings_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
