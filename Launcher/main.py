@@ -1356,7 +1356,7 @@ class RebootLauncherApp(ctk.CTk):
         back_btn.pack(side="left", padx=(0,10))
         ctk.CTkLabel(header, text="Settings > Internal files", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
-        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Cobalt (default), Tellurium for S29+",
+        SettingTile(parent, "Authentication patcher", "Redirects all HTTP requests to the backend — Tellurium (default), Cobalt for older builds",
                     is_option=True, option_var=self.dll_auth_choice_var,
                     options_list=list(_DLL_AUTH_PRESETS.keys()))
         SettingTile(parent, "Unreal engine patcher", "Unlocks the Unreal Engine Console — use Erbium Client for Ch3+",
