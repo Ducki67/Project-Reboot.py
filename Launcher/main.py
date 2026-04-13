@@ -234,15 +234,16 @@ def _rpc_image(build_ver: str) -> str:
 
 _DLL_BASE_URL        = "https://github.com/Auties00/reboot_launcher/raw/master/gui/dependencies/dlls/"
 _COBALT_URL          = _DLL_BASE_URL + "cobalt.dll"
+_TELLURIUM_URL       = "http://r2.ploosh.dev/Tellurium.dll"
 _REBOOT_DLL_URL      = "https://nightly.link/Milxnor/Project-Reboot-3.0/workflows/msbuild/master/Reboot.zip" # credits to Milxnor <3
 _ERBIUM_URL          = "https://nightly.link/plooshi/Erbium/workflows/Build/main/Erbium.zip" # credits to plooshi <3
 _ERBIUM_CLIENT_URL   = "https://nightly.link/plooshi/Erbium/workflows/Build/main/ErbiumClient.zip" # credits to plooshi <3
 _LARGE_PAK_URL       = "https://raw.githubusercontent.com/cipherfps/ATLAS-Link/main/atlas_link_flutter/assets/dlls/LargePakPatch.dll" # credits to cipher <3
 
 _DLL_AUTH_PRESETS = {
-    "Cobalt":              ("cobalt.dll",              None,              _COBALT_URL, False),
-    "Tellurium 3551":      ("tellurium3551.dll",        None,              None,        True),
-    "Tellurium Push 3551": ("tellurium_push3551.dll",   None,              None,        True),
+    "Cobalt":              ("cobalt.dll",              None,              _COBALT_URL,     False),
+    "Tellurium 3551":      ("Tellurium.dll",            None,              _TELLURIUM_URL,  False),
+    "Tellurium Push 3551": ("Tellurium.dll",            None,              _TELLURIUM_URL,  False),
 }
 _DLL_CONSOLE_PRESETS = {
     "Console":       ("console.dll",     None,              None,              False),
