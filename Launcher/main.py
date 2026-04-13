@@ -1349,7 +1349,7 @@ class RebootLauncherApp(ctk.CTk):
         back_btn.pack(side="left", padx=(0, 10))
         ctk.CTkLabel(header, text="Settings > Internal files", font=("Segoe UI", 28, "bold"), text_color="white", anchor="w").pack(side="left")
 
-        def dll_tile(title, subtitle, path_var, presets=None, choice_var=None, download_url=None):
+        def dll_tile(title, subtitle, path_var, presets=None, choice_var=None, download_url=None, dl_filename=None):
             card = ctk.CTkFrame(parent, fg_color=_T["tile"], corner_radius=8)
             card.pack(fill="x", pady=5)
             body = ctk.CTkFrame(card, fg_color="transparent")
@@ -1406,7 +1406,7 @@ class RebootLauncherApp(ctk.CTk):
                     if not nd and (z or d):
                         return fn, z, d
                 if download_url:
-                    return os.path.basename(path_var.get()) or "file.dll", None, download_url
+                    return dl_filename or os.path.basename(path_var.get()) or "file.dll", None, download_url
                 return None, None, None
 
             fn0, _, _ = _get_dl()
@@ -1431,8 +1431,8 @@ class RebootLauncherApp(ctk.CTk):
                  self.dll_server_var,  presets=_DLL_SERVER_PRESETS,  choice_var=self.dll_server_choice_var)
         dll_tile("Memory patcher",           "Prevents the client from crashing due to a memory leak",
                  self.dll_memory_var)
-        dll_tile("LargePakPatch",            "Inject after login for custom PAK mods — by Twin1 & Cipher",
-                 self.dll_large_pak_var, download_url=_LARGE_PAK_URL)
+        dll_tile("LargePakPatch DLL",        "Inject after login for custom PAK mods — by Twin1 & Cipher",
+                 self.dll_large_pak_var, download_url=_LARGE_PAK_URL, dl_filename="LargePakPatch.dll")
 
     def build_accountsettings_page(self, parent):
         header = ctk.CTkFrame(parent, fg_color="transparent")
